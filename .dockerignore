@@ -1,0 +1,9 @@
+.git
+.agents
+.env
+**/node_modules
+**/dist
+**/coverage
+prototypes/**/results
+npm-debug.log*
+pnpm-debug.log*

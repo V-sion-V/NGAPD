@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "seed": 20260724,
+  "projectKey": "ZERO",
+  "profiles": [
+    {
+      "id": "deep-tree",
+      "depth": 8,
+      "childrenPerLevel": [6, 5, 4, 3, 2, 2, 2, 0],
+      "dependencyDensity": "sparse"
+    },
+    {
+      "id": "wide-siblings",
+      "depth": 3,
+      "childrenPerLevel": [5, 200, 0],
+      "dependencyDensity": "medium"
+    },
+    {
+      "id": "dense-dag",
+      "depth": 2,
+      "childrenPerLevel": [36, 0],
+      "dependencyDensity": "dense-acyclic"
+    }
+  ],
+  "displayTypes": ["normal", "sprint", "milestone"],
+  "statuses": ["pending", "in_progress", "blocked", "completed"],
+  "requiredLabels": ["程序", "美术", "策划", "音乐"]
+}

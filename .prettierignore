@@ -1,0 +1,9 @@
+**/dist/
+**/coverage/
+**/node_modules/
+**/.vite/
+**/out/
+pnpm-lock.yaml
+prototypes/**/results/**
+README.md
+docs/**

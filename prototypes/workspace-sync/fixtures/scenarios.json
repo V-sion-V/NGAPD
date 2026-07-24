@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "workspace": {
+    "id": "ws-task-zero-42",
+    "scope": "task",
+    "ownerUserId": "user-alice",
+    "syncVersion": 7
+  },
+  "clients": [
+    {
+      "id": "win-alice-01",
+      "userId": "user-alice",
+      "platform": "windows"
+    },
+    {
+      "id": "mac-alice-02",
+      "userId": "user-alice",
+      "platform": "macos"
+    },
+    {
+      "id": "win-bob-admin",
+      "userId": "user-bob",
+      "platform": "windows"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "SYNC-001",
+      "title": "正常租约与提交",
+      "expected": "提交成功，syncVersion 从 7 递增到 8，随后可释放租约"
+    },
+    {
+      "id": "SYNC-002",
+      "title": "第二设备争用",
+      "expected": "第二设备只读连接，不能产生第二个合法写入流"
+    },
+    {
+      "id": "SYNC-003",
+      "title": "租约到期后的迟到提交",
+      "expected": "旧持有者提交被拒绝，服务端事实不变"
+    },
+    {
+      "id": "SYNC-004",
+      "title": "基线版本过期",
+      "expected": "停止上传并进入冲突状态，不静默覆盖"
+    },
+    {
+      "id": "SYNC-005",
+      "title": "选择本地版本",
+      "expected": "仍有写资格的用户确认后，本地 manifest 成为唯一的新服务端版本"
+    },
+    {
+      "id": "SYNC-006",
+      "title": "选择服务端版本",
+      "expected": "仍有写资格的用户确认后，本地副本原子替换为服务端版本"
+    },
+    {
+      "id": "SYNC-007",
+      "title": "Owner 变化且存在未同步文件",
+      "expected": "原 Owner 不能提交，新 Owner 可显式选择冲突版本"
+    },
+    {
+      "id": "SYNC-008",
+      "title": "受保护路径过滤",
+      "expected": ".ngapd、TASK.md 和 SUMMARY.md 不进入内容 manifest"
+    },
+    {
+      "id": "SYNC-009",
+      "title": "跨平台名称碰撞",
+      "expected": "大小写碰撞、Windows 保留名和非法字符在写入前被明确拒绝"
+    }
+  ]
+}

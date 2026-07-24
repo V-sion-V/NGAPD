@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+preferWorkspacePackages: true
+strictPeerDependencies: true
+verifyDepsBeforeRun: false
+
+allowBuilds:
+  electron: true
+  esbuild: true

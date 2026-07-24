@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "actor": {
+    "userId": "user-alice",
+    "logicalRoleIds": ["tech-client-l2", "tech-gameplay-l2"]
+  },
+  "task": {
+    "key": "ZERO-42",
+    "title": "实现冲刺技能",
+    "status": "in_progress",
+    "budgetTokens": 6000
+  },
+  "sources": [
+    {
+      "id": "security-rules",
+      "kind": "system_rule",
+      "priority": 100,
+      "estimatedTokens": 900,
+      "allowed": true
+    },
+    {
+      "id": "current-task",
+      "kind": "task_canonical_body",
+      "priority": 90,
+      "estimatedTokens": 1100,
+      "allowed": true
+    },
+    {
+      "id": "project-rules",
+      "kind": "project_skill",
+      "priority": 80,
+      "estimatedTokens": 1500,
+      "allowed": true
+    },
+    {
+      "id": "user-workflow",
+      "kind": "user_skill",
+      "priority": 70,
+      "estimatedTokens": 1200,
+      "allowed": true
+    },
+    {
+      "id": "ancestor-chain",
+      "kind": "ancestor_tasks",
+      "priority": 60,
+      "estimatedTokens": 800,
+      "allowed": true
+    },
+    {
+      "id": "completed-predecessors",
+      "kind": "knowledge_summaries",
+      "priority": 50,
+      "estimatedTokens": 700,
+      "allowed": true
+    },
+    {
+      "id": "direct-follow",
+      "kind": "followed_task",
+      "priority": 40,
+      "estimatedTokens": 650,
+      "allowed": true
+    },
+    {
+      "id": "other-user-private-workspace",
+      "kind": "user_workspace",
+      "priority": 0,
+      "estimatedTokens": 400,
+      "allowed": false
+    }
+  ]
+}

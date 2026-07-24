@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "workspaceId": "ws-task-zero-42",
+  "syncVersion": 7,
+  "entries": [
+    {
+      "path": "design/combat.md",
+      "kind": "file",
+      "size": 31,
+      "sha256": "7b4f82e66c760af64d8d728c58a8381578f5f579a1a89a678e0be8646e914f0f"
+    },
+    {
+      "path": "references/hero.png",
+      "kind": "file",
+      "size": 12,
+      "sha256": "328826d9cb8409e198b3bbd9a579a31a892cfd4dbff80a01d082bb7c325f96b0"
+    }
+  ]
+}
