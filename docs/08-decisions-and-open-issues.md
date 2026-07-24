@@ -88,8 +88,9 @@
 | D-078 | 评论正文使用 Markdown 文本；附件不直接存入评论记录，只引用当前用户有权读取的工作区文件 | 用户采用 O-009 默认值 |
 | D-079 | 初期实际部署按少于 10 名用户、小规模项目、内网或 VPN 访问的一台 Linux 服务器设计；使用 Docker Compose，优先保证交付，不为高并发、高可用集群或大规模容量提前增加基础设施 | 用户明确确认 |
 | D-080 | NGAPD 服务端不调用外部 API 或 LLM，全部业务数据自托管。通过 Agent 完成任务时，由用户自己的 Agent/模型生成摘要并随完成提案提交；人工完成且未提供摘要时先提示，用户仍继续则由服务端使用任务名称、正文摘要、状态和完成时间生成确定性的一句话基本摘要 | 用户明确确认 |
-| D-081 | MVP 采用 TypeScript 单仓库、Fastify 模块化单体、PostgreSQL、React Web、Electron 桌面客户端、REST/OpenAPI、SSE、PostgreSQL 后台作业和本地内容寻址文件存储；单机 Docker Compose 部署，不引入 Redis、独立搜索服务、MinIO 或 Kubernetes | 技术 ADR 基线，详见 09 文档 |
+| D-081 | MVP 采用 TypeScript 单仓库、Fastify 模块化单体、PostgreSQL、React Web、Electron 桌面客户端、REST/OpenAPI、SSE、PostgreSQL 后台作业和本地内容寻址文件存储；单机 Docker Compose 部署，不引入 Redis、独立搜索服务、MinIO 或 Kubernetes | 已被 D-083 的客户端部分取代；其余服务端与部署选型继续有效 |
 | D-082 | 首批逻辑角色模板采用策划、技术、美术、音乐与声音四个角色族；“技术”同时包含程序开发和 QA。等级暂用 L1/L2/L3，分别表示指导下执行、独立负责专业模块、负责跨模块标准与最终决策；角色不要求拥有完整等级序列，正式清单见 `11-logical-role-templates.json` | 用户审阅后确认 |
+| D-083 | 当前客户端基础改为无界面的 Workspace CLI：通过 MCP stdio 向 Agent 提供受控能力，人工只使用状态与诊断；UI 无关能力放入共享核心，未来同步平台适配器或 GUI 复用该核心，不恢复 Electron 空壳 | Workspace CLI 替代功能，详见 09 文档 ADR-014 |
 
 ## 2. 权限解释基线
 

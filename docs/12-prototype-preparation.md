@@ -4,7 +4,7 @@
 
 ## 1. 结论
 
-三个前置原型已经具备统一的验证问题、确定性夹具、退出标准和结果记录格式；工程骨架已经覆盖服务端、后台作业、Web、桌面端、共享契约、领域包、数据库迁移和测试夹具。下一项工作可以直接开始“工作区租约与同步原型”，不需要再补一轮泛化架构设计。
+三个前置原型已经具备统一的验证问题、确定性夹具、退出标准和结果记录格式；工程骨架已经覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、领域包、数据库迁移和测试夹具。下一项工作可以直接开始“工作区租约与同步原型”，不需要再补一轮泛化架构设计。
 
 ## 2. 固定技术基线
 
@@ -15,7 +15,7 @@
 | 数据库 | PostgreSQL 17 + Kysely migration |
 | 后台作业 | Graphile Worker，共用 PostgreSQL |
 | Web | React 19 + Vite + TanStack Query |
-| 桌面端 | Electron + React，主进程负责文件与同步能力 |
+| 本地 Workspace 能力 | Node.js CLI + MCP stdio；UI 无关能力位于 `@ngapd/workspace-core`，未来同步与 GUI 通过平台适配器扩展 |
 | 部署 | 单台 Linux 服务器，Docker Compose + Caddy |
 | 外部服务 | 当前阶段不调用任何外部 API、AI 或 LLM |
 
@@ -28,12 +28,13 @@ apps/
   api/          Fastify HTTP、SSE 和 OpenAPI 入口
   worker/       Graphile Worker 后台作业入口
   web/          浏览器端 React 应用
-  desktop/      Electron 主进程、preload 与渲染层
+  workspace-cli/无界面人工诊断与 MCP stdio 入口
 packages/
   contracts/    运行时 Schema 与跨端契约
   database/     Kysely 数据库连接与迁移
   domain/       与框架无关的领域规则
   test-fixtures/确定性任务图和跨原型测试夹具
+  workspace-core/UI 无关的 Workspace 状态、诊断、类型与平台端口
 prototypes/
   workspace-sync/
   task-ui/
@@ -41,7 +42,7 @@ prototypes/
 deploy/         Caddy 与镜像构建文件
 ```
 
-正式业务规则只能进入 `packages/domain` 或对应服务端模块，不能只存在于 Web、Electron 渲染层或 Agent prompt 中。
+正式业务规则只能进入 `packages/domain`、`packages/workspace-core` 或对应服务端模块，不能只存在于 Web、CLI 命令解析、未来 GUI 适配层或 Agent prompt 中。
 
 ## 4. 常用命令
 
@@ -58,10 +59,11 @@ pnpm test
 pnpm check
 
 pnpm dev
-pnpm dev:desktop
+pnpm dev:workspace -- status
+pnpm dev:workspace -- doctor --json
 ```
 
-`pnpm dev` 并行启动 API、Worker 和 Web；需要可访问的 PostgreSQL 和 `DATABASE_URL`。`pnpm dev:desktop` 单独启动桌面壳。
+`pnpm dev` 并行启动 API、Worker 和 Web；需要可访问的 PostgreSQL 和 `DATABASE_URL`。`pnpm dev:workspace -- <args>` 单独运行 Workspace CLI，不要求数据库或网络。Agent 宿主使用构建后的 `ngapd-workspace serve --stdio`；首版仅提供只读状态和诊断。
 
 ## 5. 单机部署骨架
 
@@ -79,15 +81,15 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 
 ## 6. 已验证与环境限制
 
-2026-07-24 在 Windows 开发机完成：
+2026-07-24 的原始 Windows 工程骨架验证包括：
 
 - 依赖锁定与供应链构建脚本白名单。
 - Prettier 格式检查和 ESLint。
 - 全 workspace TypeScript 类型检查。
 - API、领域规则和测试夹具单元测试。
-- API、Worker、共享包、React Web 与 Electron 三进程生产构建。
+- API、Worker、共享包、React Web 与当时的 Electron 三进程生产构建。
 
-本机没有安装 Docker，因此只通过 YAML 格式解析和构建文件审查检查 Compose；容器实际启动、PostgreSQL migration、Caddy TLS 和 Linux 卷权限仍需在首个有 Docker 的环境中验证。macOS 文件系统行为也必须在真实 macOS 设备验证，不能用 Windows 模拟结果替代。
+该 Electron 骨架已由 Workspace CLI 与共享核心取代；当前统一门禁覆盖 API、Worker、Web、共享包和 CLI。本机没有安装 Docker，因此只通过 YAML 格式解析和构建文件审查检查 Compose；容器实际启动、PostgreSQL migration、Caddy TLS 和 Linux 卷权限仍需在首个有 Docker 的环境中验证。macOS 文件系统行为也必须在真实 macOS 设备验证，不能用 Windows 模拟结果替代。
 
 ## 7. 第一个原型的实现切片
 
@@ -97,7 +99,7 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 2. 在 `packages/domain` 实现纯租约状态机，先覆盖 `SYNC-001` 至 `SYNC-007`。
 3. 在 `packages/database` 增加工作区、租约、同步版本、manifest 和审计迁移。
 4. 在 API 实现获取/续期/释放租约、读取 manifest、幂等提交和冲突选择。
-5. 在 Electron 主进程实现规范化路径、受保护路径过滤、SHA-256 扫描和原子替换；渲染层只展示状态并发起受限 IPC。
+5. 在 `@ngapd/workspace-core` 定义规范化路径、受保护路径、SHA-256 扫描和原子替换端口，并在独立平台适配器实现本地文件能力；未来 GUI 只复用共享接口，不调用 CLI 文本命令。
 6. 先用两个进程模拟两台设备，再在 Windows 与 macOS 实机执行同一组场景。
 7. 将每次执行证据写入 `prototypes/workspace-sync/results/`；只有满足退出标准才开始正式详细模块设计。
 

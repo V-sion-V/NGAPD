@@ -97,9 +97,9 @@
 - 每父级 `graph_version`、跨 Owner 依赖接受和并发失效测试。
 - 移动任务同时锁定源/目标图版本并与依赖增删互斥的并发测试。
 - 统一错误码、审计接口和 API 版本约定。
-- 最小 Workspace 服务端契约：作用域唯一性、`sync_version`、租约、工作周期、冻结和快照接口，不要求此阶段完成桌面物化。
-- Web、服务端和本地客户端的最小构建/发布流水线。
-- TypeScript 单仓库、Fastify/PostgreSQL/React/Electron 基础工程，以及单机 Docker Compose 开发和部署骨架。
+- 最小 Workspace 服务端契约：作用域唯一性、`sync_version`、租约、工作周期、冻结和快照接口，不要求此阶段完成本地物化。
+- Web、服务端、Workspace CLI 与共享核心的最小构建/发布流水线。
+- TypeScript 单仓库、Fastify/PostgreSQL/React、无界面 Workspace CLI 与共享核心基础工程，以及单机 Docker Compose 开发和部署骨架。
 
 验收门槛：不通过 UI 也能用领域/API 测试证明树、依赖和状态不变量。
 
@@ -146,11 +146,11 @@
 
 验收门槛：依赖方向和层级边界始终正确；用户能从项目顶层定位到任意深层 Task Key，并能稳定返回上一级。
 
-### M4：工作区客户端
+### M4：Workspace 同步平台适配器
 
 交付：
 
-- macOS、Windows 客户端基础安装和登录。
+- macOS、Windows 平台适配器基础安装和登录；可选 GUI 不作为同步正确性的前置条件。
 - 统一 NGAPD 根目录配置，以及用户级、项目级、任务级稳定路径和安全校验。
 - 三种逻辑工作区的物化。
 - 用户级本人写、项目级 Project Owner/Admin 写、任务级有效 Task Owner 写的权限策略。

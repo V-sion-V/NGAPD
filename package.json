@@ -16,7 +16,7 @@
     "db:migrate": "pnpm --filter @ngapd/database migrate",
     "dev": "pnpm build:packages && concurrently -n api,worker,web -c blue,magenta,green \"pnpm --filter @ngapd/api dev\" \"pnpm --filter @ngapd/worker dev\" \"pnpm --filter @ngapd/web dev\"",
     "dev:api": "pnpm build:packages && pnpm --filter @ngapd/api dev",
-    "dev:desktop": "pnpm build:packages && pnpm --filter @ngapd/desktop dev",
+    "dev:workspace": "pnpm build:packages && pnpm --filter @ngapd/workspace-cli dev --",
     "dev:web": "pnpm build:packages && pnpm --filter @ngapd/web dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@ngapd/workspace-cli": "workspace:*",
     "@types/node": "^24.10.1",
     "concurrently": "^9.2.1",
     "eslint": "^9.39.1",

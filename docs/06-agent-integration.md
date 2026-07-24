@@ -14,7 +14,7 @@
 - 其他用户的用户级工作区虽然底层可读，但 Agent 只有在用户明确指定目标和目的后才能读取，不得自行发现或加载。
 - NGAPD 服务端不连接外部 API 或 LLM；摘要由当前用户自己的 Agent/模型在完成前生成并随提案提交，服务端只验证、保存和投影。
 
-建议采用“本地 Agent 工具服务 + 标准工具协议（优先 MCP 类接口）+ NGAPD Skill”。协议层应可替换，不把产品领域模型绑定到某家模型或 Agent。
+当前采用“Workspace CLI 本地工具服务 + MCP stdio + NGAPD Skill”。协议适配位于 CLI，共享 Workspace 能力不绑定某家模型、Agent 或 CLI 文本界面。
 
 ## 2. 组件关系
 
@@ -22,14 +22,14 @@
 flowchart LR
     User["用户"] --> Host["Agent 宿主"]
     Host --> Skill["NGAPD Skill"]
-    Host --> Tools["本地 Agent 工具服务"]
-    Tools --> Client["工作区客户端"]
+    Host --> Tools["Workspace CLI / MCP stdio"]
+    Tools --> Client["共享 Workspace 核心 / 未来平台适配器"]
     Tools --> API["NGAPD 服务端 API"]
     Client --> FS["用户级 / 项目级 / 任务级工作区"]
     API --> Domain["授权与领域服务"]
 ```
 
-Skill 告诉 Agent 应该怎样工作；工具服务决定 Agent 实际能够做什么。不能只依赖提示词执行安全规则。
+Skill 告诉 Agent 应该怎样工作；工具服务决定 Agent 实际能够做什么。不能只依赖提示词执行安全规则。当前 CLI 只注册 `workspace_status` 和 `workspace_doctor`，本章其余会话、工作区和任务工具是后续目标契约，不代表首版已经可用。
 
 ## 3. Agent 会话
 
