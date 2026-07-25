@@ -1,5 +1,7 @@
 import type { DoctorResult, WorkspaceStatus } from "@ngapd/workspace-core";
 
+import type { WorkspaceCliResult } from "./commands.js";
+
 export function renderStatus(status: WorkspaceStatus): string {
   return [
     "Workspace CLI status",
@@ -30,4 +32,39 @@ export function renderDoctor(result: DoctorResult): string {
 
 export function renderJson(value: unknown): string {
   return JSON.stringify(value, undefined, 2);
+}
+
+export function renderWorkspaceResult(result: WorkspaceCliResult, json: boolean): string {
+  if (json) {
+    return JSON.stringify(result);
+  }
+  const details = Object.entries(result.data).map(
+    ([key, value]) => `${humanizeKey(key)}: ${formatValue(value)}`,
+  );
+  return [
+    result.message,
+    `Status: ${result.status}`,
+    ...(result.workspaceId === null ? [] : [`Workspace: ${result.workspaceId}`]),
+    ...details,
+    ...(result.recovery === null ? [] : [`Recovery: ${result.recovery}`]),
+  ].join("\n");
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .replace(/^./u, (character) => character.toUpperCase());
+}
+
+function formatValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+  if (value === null) {
+    return "none";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
 }

@@ -37,6 +37,7 @@ services:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 3000
+      WEB_ORIGIN: ${NGAPD_SITE_ADDRESS:-https://ngapd.local}
       DATABASE_URL: postgres://${POSTGRES_USER:-ngapd}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ngapd}
       OBJECT_STORE_PATH: /var/lib/ngapd/objects
       BACKUP_PATH: /var/lib/ngapd/backups

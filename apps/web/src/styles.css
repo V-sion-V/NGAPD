@@ -1,6 +1,6 @@
 :root {
   color: #edf0f7;
-  background: #11141b;
+  background: #0d1118;
   font-family:
     Inter,
     "PingFang SC",
@@ -22,69 +22,211 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 80% 15%, rgb(85 94 170 / 28%), transparent 35rem),
-    linear-gradient(145deg, #11141b 0%, #171b24 55%, #101217 100%);
+    radial-gradient(circle at 82% 8%, rgb(78 112 184 / 30%), transparent 34rem),
+    radial-gradient(circle at 10% 70%, rgb(39 130 109 / 18%), transparent 36rem), #0d1118;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .shell {
-  display: grid;
   min-height: 100vh;
-  place-items: center;
-  padding: 2rem;
+  padding: clamp(1.5rem, 5vw, 5rem);
 }
 
 .hero {
-  width: min(760px, 100%);
-  padding: clamp(2rem, 5vw, 4.5rem);
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 1.5rem;
-  background: rgb(20 24 33 / 78%);
-  box-shadow: 0 2rem 7rem rgb(0 0 0 / 35%);
-  backdrop-filter: blur(24px);
+  width: min(940px, 100%);
+  margin: 0 auto;
 }
 
 .eyebrow {
   margin: 0 0 1rem;
-  color: #9ca8ff;
+  color: #9db4ff;
   font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  font-weight: 750;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
 }
 
 h1 {
-  max-width: 15ch;
+  max-width: 13ch;
   margin: 0;
-  font-size: clamp(2.25rem, 6vw, 4.5rem);
-  line-height: 1.04;
-  letter-spacing: -0.045em;
+  font-size: clamp(2.4rem, 7vw, 5.4rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+h2 {
+  margin: 0 0 1.25rem;
+  font-size: 1.1rem;
 }
 
 .summary {
-  max-width: 44rem;
-  margin: 1.75rem 0;
-  color: #b9c0cf;
-  font-size: 1.05rem;
-  line-height: 1.8;
+  max-width: 42rem;
+  margin: 1.6rem 0 2.4rem;
+  color: #aeb7c8;
+  line-height: 1.75;
 }
 
-.status {
+.workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.panel,
+.account-bar {
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 1.25rem;
+  background: rgb(21 27 37 / 82%);
+  box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 22%);
+  backdrop-filter: blur(20px);
+}
+
+.panel {
+  padding: clamp(1.25rem, 4vw, 2rem);
+}
+
+.form {
+  display: grid;
+  width: min(440px, 100%);
+  gap: 1rem;
+}
+
+.tabs,
+.actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.tab {
+  padding: 0.35rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #8e99ab;
+  background: transparent;
+}
+
+.tab--active {
+  border-color: #7b9cff;
+  color: #f2f5fb;
+}
+
+label {
+  display: grid;
+  gap: 0.5rem;
+  color: #cbd2de;
+  font-size: 0.88rem;
+}
+
+input {
+  width: 100%;
+  padding: 0.82rem 0.95rem;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 0.72rem;
+  outline: none;
+  color: #f5f7fb;
+  background: #0d121a;
+}
+
+input:focus {
+  border-color: #7b9cff;
+  box-shadow: 0 0 0 0.2rem rgb(123 156 255 / 14%);
+}
+
+.primary,
+.secondary {
+  min-height: 2.65rem;
+  padding: 0.65rem 1rem;
+  border-radius: 0.72rem;
+  font-weight: 700;
+}
+
+.primary {
+  border: 1px solid #8ca8ff;
+  color: #0b1120;
+  background: #8ca8ff;
+}
+
+.secondary {
+  border: 1px solid rgb(255 255 255 / 15%);
+  color: #e4e9f2;
+  background: transparent;
+}
+
+.account-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+}
+
+.account-bar div,
+.device-card div,
+.device-list li div {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.muted,
+.device-card span,
+.device-list span,
+.notice {
+  color: #929dad;
+  font-size: 0.86rem;
+}
+
+.device-card,
+.device-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 3%);
+}
+
+.device-list {
+  display: grid;
   gap: 0.65rem;
-  color: #d6dbea;
-  font-size: 0.9rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.status-dot {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  background: #f0a65a;
-  box-shadow: 0 0 0 0.25rem rgb(240 166 90 / 15%);
+.device-list li {
+  margin: 0;
 }
 
-.status-dot--ok {
-  background: #62d7a5;
-  box-shadow: 0 0 0 0.25rem rgb(98 215 165 / 15%);
+.error {
+  margin: 0;
+  color: #ffaaa4;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .device-card,
+  .device-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }

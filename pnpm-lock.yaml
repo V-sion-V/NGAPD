@@ -56,9 +56,22 @@ importers:
       '@ngapd/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@ngapd/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@ngapd/object-store':
+        specifier: workspace:*
+        version: link:../../packages/object-store
       fastify:
         specifier: ^5.6.2
         version: 5.10.0
+    devDependencies:
+      '@ngapd/test-fixtures':
+        specifier: workspace:*
+        version: link:../../packages/test-fixtures
+      '@ngapd/workspace-cli':
+        specifier: workspace:*
+        version: link:../workspace-cli
 
   apps/web:
     dependencies:
@@ -99,9 +112,15 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(zod@3.25.76)
+      '@ngapd/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@ngapd/workspace-core':
         specifier: workspace:*
         version: link:../../packages/workspace-core
+      '@sinclair/typebox':
+        specifier: ^0.34.41
+        version: 0.34.52
       zod:
         specifier: ^3.25.0
         version: 3.25.76
@@ -127,7 +146,13 @@ importers:
 
   packages/domain: {}
 
-  packages/test-fixtures: {}
+  packages/object-store: {}
+
+  packages/test-fixtures:
+    dependencies:
+      '@ngapd/domain':
+        specifier: workspace:*
+        version: link:../domain
 
   packages/workspace-core: {}
 

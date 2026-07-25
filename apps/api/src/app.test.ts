@@ -35,4 +35,20 @@ describe("health endpoints", () => {
       503,
     );
   });
+
+  it("keeps system information and stable request IDs compatible", async () => {
+    const app = await buildApp();
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/system/info",
+      headers: { "x-request-id": "compat-request" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      service: "ngapd-api",
+      status: "ok",
+    });
+  });
 });
