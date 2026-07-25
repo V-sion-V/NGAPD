@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./task-graph": {
+      "types": "./dist/task-graph.d.ts",
+      "default": "./dist/task-graph.js"
     }
   },
   "files": [

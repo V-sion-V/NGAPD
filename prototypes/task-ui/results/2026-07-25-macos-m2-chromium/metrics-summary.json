@@ -1,0 +1,35 @@
+{
+  "measurement": {
+    "clock": "browser performance.now() from state update request through the next animation frame",
+    "profile": "wide-siblings",
+    "viewport": "1280x720",
+    "zoom": "100% default",
+    "warmCache": true
+  },
+  "interactiveMs": 70,
+  "selection": {
+    "samples": 20,
+    "p95Ms": 59.9,
+    "maxMs": 63.2
+  },
+  "search": {
+    "samples": 40,
+    "p95Ms": 61.4,
+    "maxMs": 67.5
+  },
+  "filter": {
+    "samples": 40,
+    "p95Ms": 63.9,
+    "maxMs": 82.1
+  },
+  "navigateDown": {
+    "samples": 20,
+    "p95Ms": 65.2,
+    "maxMs": 66.4
+  },
+  "navigateUp": {
+    "samples": 20,
+    "p95Ms": 13.8,
+    "maxMs": 14.2
+  }
+}

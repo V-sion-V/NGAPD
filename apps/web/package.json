@@ -7,10 +7,12 @@
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@ngapd/contracts": "workspace:*",
+    "@ngapd/test-fixtures": "workspace:*",
     "@tanstack/react-query": "^5.90.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
@@ -19,6 +21,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^4.0.15"
   }
 }

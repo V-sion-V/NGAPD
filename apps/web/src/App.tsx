@@ -2,6 +2,8 @@ import type { ApiError, DeviceSummary, PairingStatus, SessionActor } from "@ngap
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useMemo, useState } from "react";
 
+import { TaskUiApp } from "./task-ui/TaskUiApp.js";
+
 interface PairingSummary {
   pairingId: string;
   status: PairingStatus;
@@ -31,6 +33,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function App() {
+  if (new URLSearchParams(window.location.search).get("prototype") === "task-ui") {
+    return <TaskUiApp />;
+  }
+  return <WorkspaceAccessApp />;
+}
+
+function WorkspaceAccessApp() {
   const queryClient = useQueryClient();
   const [authMode, setAuthMode] = useState<"register" | "login">("register");
   const [loginName, setLoginName] = useState("");

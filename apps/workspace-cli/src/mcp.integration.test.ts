@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 const binPath = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
@@ -92,13 +93,20 @@ describe("MCP stdio integration", () => {
     const stdout = collect(child.stdout);
     const stderr = collect(child.stderr);
 
-    await new Promise((resolve) => {
-      setTimeout(resolve, 150);
+    const initialized = initialize(child.stdout, child.stdin);
+    await expect(initialized).resolves.toMatchObject({
+      jsonrpc: "2.0",
+      id: 1,
+      result: expect.objectContaining({
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+      }),
     });
+
+    const exit = exited(child);
     child.kill(signal);
 
-    await expect(exited(child)).resolves.toBe(expectedCode);
-    expect(await stdout).toBe("");
+    await expect(exit).resolves.toBe(expectedCode);
+    expect(await stdout).not.toContain("Workspace CLI");
     expect(await stderr).not.toContain("Workspace CLI failed");
   });
 });
@@ -147,4 +155,66 @@ function exited(child: ReturnType<typeof spawn>): Promise<number | null> {
       resolve(code);
     });
   });
+}
+
+function initialize(
+  stdout: NodeJS.ReadableStream | null,
+  stdin: NodeJS.WritableStream | null,
+): Promise<unknown> {
+  if (stdout === null || stdin === null) {
+    return Promise.reject(new Error("Expected piped MCP stdio streams."));
+  }
+
+  const response = new Promise<unknown>((resolve, reject) => {
+    let buffer = "";
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for MCP initialization."));
+    }, 4_000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      stdout.off("data", onData);
+      stdout.off("error", onError);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onData = (chunk: Buffer | string) => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf("\n");
+      if (newline === -1) {
+        return;
+      }
+
+      cleanup();
+      try {
+        resolve(JSON.parse(buffer.slice(0, newline)) as unknown);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    stdout.on("data", onData);
+    stdout.on("error", onError);
+  });
+
+  stdin.write(
+    `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: LATEST_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: {
+          name: "workspace-cli-signal-test",
+          version: "0.1.0",
+        },
+      },
+    })}\n`,
+  );
+
+  return response;
 }

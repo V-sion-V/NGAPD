@@ -1,0 +1,26 @@
+{
+    "pgsql.connections": [
+        {
+            "id": "4A43D7FD-74B7-49DD-B2EA-9FCF4522C5BE",
+            "groupId": "173DB748-2988-4423-B476-CA34D652A966",
+            "authenticationType": "None",
+            "connectTimeout": 15,
+            "applicationName": "vscode-pgsql",
+            "clientEncoding": "utf8",
+            "sslmode": "disable",
+            "sshSavePassword": true,
+            "savePassword": true,
+            "sslRootCertMode": "none",
+            "server": "Local",
+            "user": "v_sion",
+            "database": "ngapd",
+            "profileName": "Local, ngapd (None)",
+            "port": "5432",
+            "hostaddr": "127.0.0.1",
+            "password": "",
+            "expiresOn": 0,
+            "emptyPasswordInput": true,
+            "sshPassword": ""
+        }
+    ]
+}
