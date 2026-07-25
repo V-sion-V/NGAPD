@@ -1,5 +1,8 @@
 {
   "schemaVersion": 1,
+  "fixtureVersion": "agent-context-v1",
+  "scenarioId": "deep-tree-core",
+  "inputVersion": "agent-context-v1:20260724:deep-tree",
   "actor": {
     "userId": "user-alice",
     "logicalRoleIds": ["tech-client-l2", "tech-gameplay-l2"]
@@ -14,58 +17,96 @@
     {
       "id": "security-rules",
       "kind": "system_rule",
-      "priority": 100,
+      "priority": 400,
       "estimatedTokens": 900,
-      "allowed": true
+      "mandatory": true,
+      "trust": "trusted_system",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
+    },
+    {
+      "id": "project-rules",
+      "kind": "project_rule",
+      "priority": 300,
+      "estimatedTokens": 700,
+      "mandatory": true,
+      "trust": "trusted_project",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "current-task",
       "kind": "task_canonical_body",
-      "priority": 90,
+      "priority": 200,
       "estimatedTokens": 1100,
-      "allowed": true
+      "mandatory": true,
+      "trust": "canonical",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
-      "id": "project-rules",
-      "kind": "project_skill",
-      "priority": 80,
-      "estimatedTokens": 1500,
-      "allowed": true
+      "id": "current-user-role",
+      "kind": "user_role",
+      "priority": 195,
+      "estimatedTokens": 350,
+      "mandatory": true,
+      "trust": "untrusted",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "user-workflow",
-      "kind": "user_skill",
-      "priority": 70,
-      "estimatedTokens": 1200,
-      "allowed": true
+      "kind": "user_rule",
+      "priority": 100,
+      "estimatedTokens": 360,
+      "mandatory": false,
+      "trust": "untrusted",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "ancestor-chain",
       "kind": "ancestor_tasks",
-      "priority": 60,
-      "estimatedTokens": 800,
-      "allowed": true
+      "priority": 185,
+      "estimatedTokens": 540,
+      "mandatory": false,
+      "trust": "canonical",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "completed-predecessors",
       "kind": "knowledge_summaries",
-      "priority": 50,
-      "estimatedTokens": 700,
-      "allowed": true
+      "priority": 170,
+      "estimatedTokens": 200,
+      "mandatory": false,
+      "trust": "canonical",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "direct-follow",
       "kind": "followed_task",
-      "priority": 40,
-      "estimatedTokens": 650,
-      "allowed": true
+      "priority": 160,
+      "estimatedTokens": 220,
+      "mandatory": false,
+      "trust": "canonical",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true
     },
     {
       "id": "other-user-private-workspace",
       "kind": "user_workspace",
-      "priority": 0,
-      "estimatedTokens": 400,
-      "allowed": false
+      "priority": 40,
+      "estimatedTokens": 220,
+      "mandatory": false,
+      "trust": "untrusted",
+      "underlyingReadAllowed": true,
+      "agentDiscoverable": true,
+      "allowed": false,
+      "defaultDiscoverable": false,
+      "requiresExplicitTargetAndPurpose": true,
+      "readOnly": true
     }
   ]
 }

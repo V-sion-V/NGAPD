@@ -21,7 +21,7 @@
 
 ## 场景与数据
 
-[context-sources.json](fixtures/context-sources.json) 定义候选来源、优先级、权限和预算，[workspace-injection.md](fixtures/workspace-injection.md) 用于验证提示注入不会改变工具授权。
+[context-sources.json](fixtures/context-sources.json) 记录夹具版本、候选来源、固定优先级、权限和预算约定，[workspace-injection.md](fixtures/workspace-injection.md) 用于验证提示注入不会改变工具授权。可执行夹具由 `@ngapd/test-fixtures/agent-context` 提供，复用 Task UI 的深树、200 同级和密集 DAG 数据。
 
 重点检查：
 
@@ -30,6 +30,18 @@
 3. 不加载无关兄弟任务、其他用户 Skill 或递归关注链。
 4. 图片只以元数据/明确引用进入清单，按需读取。
 5. 摘要缺失时只生成确定性的基本字段一句话概括。
+
+## 无头验证
+
+使用仓库 `.node-version` 指定的 Node 和已锁定的 pnpm 运行：
+
+```bash
+pnpm exec tsx prototypes/agent-context/run.ts
+```
+
+入口输出规范化 JSON 证据，覆盖正常预算、预算不足、分页与游标漂移、祖先和 predecessor、一跳关注与环、跨用户拒绝/显式只读、三类摘要、Skill 冲突、来源版本失效、重新授权、提示注入和确定性参考分析。性能段只测量 manifest 生成，分别记录深树、200 同级和密集 DAG 的重复样本与 P95；入口不会登录、启动数据库或 Web，也不会调用网络、AI、LLM 或执行 Skill。
+
+manifest 只包含稳定引用和元数据。正文保留在不可变合成输入中，必须通过带 manifest/source 版本并重新授权的渐进读取函数取得；图片只返回元数据。
 
 ## 退出标准
 
