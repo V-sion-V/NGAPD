@@ -1,0 +1,112 @@
+{
+  "capturedAt": "2026-07-26",
+  "profile": "wide-siblings",
+  "environment": {
+    "platform": "Windows x64",
+    "osBuild": "26200.8875",
+    "browser": "Google Chrome 150.0.7871.186",
+    "viewport": {
+      "width": 1284,
+      "height": 720
+    },
+    "zoomPercent": 100
+  },
+  "thresholds": {
+    "interactiveMs": 3000,
+    "interactionP95Ms": 200
+  },
+  "warmInteractiveMs": 151.4,
+  "interactionMeasurement": "Event start to committed React DOM update; each sample completed before the next interaction.",
+  "interactions": {
+    "select": {
+      "count": 15,
+      "minMs": 30.2,
+      "p50Ms": 70,
+      "p95Ms": 88.5,
+      "maxMs": 88.5,
+      "samplesMs": [
+        38,
+        79.6,
+        85.1,
+        88.5,
+        88.1,
+        74.6,
+        81.7,
+        63.6,
+        63.1,
+        70,
+        85.8,
+        30.2,
+        33.2,
+        32.7,
+        31.8
+      ]
+    },
+    "search": {
+      "count": 10,
+      "minMs": 14.2,
+      "p50Ms": 77.5,
+      "p95Ms": 100.7,
+      "maxMs": 100.7,
+      "samplesMs": [
+        87.3,
+        77.5,
+        89,
+        22,
+        14.9,
+        14.2,
+        84.5,
+        88.8,
+        100.7,
+        21.3
+      ]
+    },
+    "filterStatus": {
+      "count": 10,
+      "minMs": 30,
+      "p50Ms": 42.2,
+      "p95Ms": 106.7,
+      "maxMs": 106.7,
+      "samplesMs": [
+        33.4,
+        106.7,
+        57.5,
+        95.2,
+        30,
+        86.4,
+        39.6,
+        106.4,
+        38.8,
+        42.2
+      ]
+    },
+    "navigateDown": {
+      "count": 5,
+      "minMs": 71.5,
+      "p50Ms": 75.5,
+      "p95Ms": 93.5,
+      "maxMs": 93.5,
+      "samplesMs": [
+        93.5,
+        78.7,
+        71.5,
+        72.9,
+        75.5
+      ]
+    },
+    "navigateUp": {
+      "count": 4,
+      "minMs": 9.9,
+      "p50Ms": 10.9,
+      "p95Ms": 11.1,
+      "maxMs": 11.1,
+      "samplesMs": [
+        9.9,
+        10.9,
+        11.1,
+        11.1
+      ]
+    }
+  },
+  "result": "pass"
+}

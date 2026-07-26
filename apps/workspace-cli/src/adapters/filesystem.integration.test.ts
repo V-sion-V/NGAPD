@@ -9,6 +9,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -27,12 +28,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { NodeWorkspaceFileAdapter } from "./filesystem.js";
 import { NodeWorkspaceControlAdapter, NodeWorkspaceRegistryAdapter } from "./local-state.js";
 
-const taskRoot = "/private/tmp/ngapd-workspace-sync-p003-local-t002";
+const taskRoot = join(tmpdir(), "ngapd-workspace-sync-p003-local-t002");
 let ownsTaskRoot = false;
+const describeOnMacOs = process.platform === "darwin" ? describe : describe.skip;
 
-describe("Node/APFS Workspace adapters", () => {
+describeOnMacOs("Node/APFS Workspace adapters", () => {
   beforeAll(async () => {
-    await mkdir(taskRoot, { mode: 0o700 });
+    await mkdir(taskRoot, { recursive: true, mode: 0o700 });
     ownsTaskRoot = true;
   });
 

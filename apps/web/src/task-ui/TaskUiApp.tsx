@@ -15,6 +15,7 @@ import {
   type ReactNode,
   type SetStateAction,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -115,6 +116,7 @@ function TaskUiWorkspace({
   const viewportRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<string, HTMLButtonElement>());
   const latestViewport = useRef<TaskUiViewport>(state.viewport);
+  const pendingInteractions = useRef<Array<{ name: string; startedAt: number }>>([]);
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
   const scope = useMemo(
@@ -164,6 +166,24 @@ function TaskUiWorkspace({
     document.documentElement.dataset.taskUiMetrics = "[]";
   }, []);
 
+  useLayoutEffect(() => {
+    if (pendingInteractions.current.length === 0) {
+      return;
+    }
+
+    const committedAt = performance.now();
+    const completed = pendingInteractions.current.splice(0);
+    for (const interaction of completed) {
+      window.__taskUiMetrics?.interactions.push({
+        name: interaction.name,
+        durationMs: committedAt - interaction.startedAt,
+      });
+    }
+    document.documentElement.dataset.taskUiMetrics = JSON.stringify(
+      window.__taskUiMetrics?.interactions ?? [],
+    );
+  });
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const viewport = viewportRef.current;
@@ -183,15 +203,8 @@ function TaskUiWorkspace({
   }, [focusedTaskId, layout.nodes]);
 
   const commit = (name: string, update: (current: TaskUiState) => TaskUiState): void => {
-    const startedAt = performance.now();
+    pendingInteractions.current.push({ name, startedAt: performance.now() });
     setState((current) => update(updateViewport(current, latestViewport.current)));
-    requestAnimationFrame(() => {
-      const durationMs = performance.now() - startedAt;
-      window.__taskUiMetrics?.interactions.push({ name, durationMs });
-      document.documentElement.dataset.taskUiMetrics = JSON.stringify(
-        window.__taskUiMetrics?.interactions ?? [],
-      );
-    });
   };
 
   const focusNode = (taskId: string): void => {

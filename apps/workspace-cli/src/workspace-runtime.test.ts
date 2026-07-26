@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -29,12 +30,13 @@ import {
 
 const workspaceId = "10000000-0000-4000-8000-000000000001";
 const roots: string[] = [];
+const describeOnMacOs = process.platform === "darwin" ? describe : describe.skip;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describe("DefaultWorkspaceCommandRuntime", () => {
+describeOnMacOs("DefaultWorkspaceCommandRuntime", () => {
   it("pairs, connects, synchronizes, takes over, and resolves both conflict directions", async () => {
     const server = new FakeWorkspaceApi();
     const first = await createRuntime("first", server);
@@ -160,7 +162,7 @@ async function createRuntime(
   api: FakeWorkspaceApi,
   lifecycleEvents: Array<"delay" | "SIGINT" | "SIGTERM"> = [],
 ) {
-  const root = await mkdtemp("/private/tmp/ngapd-workspace-sync-p003-runtime-");
+  const root = await mkdtemp(join(tmpdir(), "ngapd-workspace-sync-p003-runtime-"));
   roots.push(root);
   await mkdir(join(root, registrationPath));
   const credentials = new MemoryCredentials();

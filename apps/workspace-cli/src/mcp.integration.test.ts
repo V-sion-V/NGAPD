@@ -72,14 +72,14 @@ describe("MCP stdio integration", () => {
     const stderr = collect(child.stderr);
 
     child.stdin.end("not-json\n");
-    const exitCode = await exited(child);
+    const exit = await exited(child);
 
     const protocolOutput = await stdout;
     const diagnosticOutput = await stderr;
     expect(protocolOutput).not.toContain("Workspace CLI");
     expect(protocolOutput).not.toContain("Error:");
     expect(
-      exitCode !== 0 || protocolOutput.includes('"error"') || diagnosticOutput.length > 0,
+      exit.code !== 0 || protocolOutput.includes('"error"') || diagnosticOutput.length > 0,
     ).toBe(true);
   });
 
@@ -105,7 +105,9 @@ describe("MCP stdio integration", () => {
     const exit = exited(child);
     child.kill(signal);
 
-    await expect(exit).resolves.toBe(expectedCode);
+    await expect(exit).resolves.toEqual(
+      process.platform === "win32" ? { code: null, signal } : { code: expectedCode, signal: null },
+    );
     expect(await stdout).not.toContain("Workspace CLI");
     expect(await stderr).not.toContain("Workspace CLI failed");
   });
@@ -148,11 +150,13 @@ function collect(stream: NodeJS.ReadableStream | null): Promise<string> {
   });
 }
 
-function exited(child: ReturnType<typeof spawn>): Promise<number | null> {
+function exited(
+  child: ReturnType<typeof spawn>,
+): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
   return new Promise((resolve, reject) => {
     child.once("error", reject);
-    child.once("exit", (code) => {
-      resolve(code);
+    child.once("exit", (code, signal) => {
+      resolve({ code, signal });
     });
   });
 }
