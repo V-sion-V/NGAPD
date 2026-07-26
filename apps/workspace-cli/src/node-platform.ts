@@ -9,6 +9,7 @@ import {
   NodeWorkspaceRegistryAdapter,
 } from "./adapters/local-state.js";
 import { MacOsKeychainCredentialAdapter } from "./adapters/macos-keychain.js";
+import { WindowsPasswordVaultCredentialAdapter } from "./adapters/windows-password-vault.js";
 
 export class NodePlatformAdapter implements PlatformAdapter {
   getPlatformInformation(): PlatformInformation {
@@ -52,5 +53,15 @@ export async function openMacOsWorkspaceAdapters(
   return {
     ...adapters,
     credentials: MacOsKeychainCredentialAdapter.forLoginKeychain(),
+  };
+}
+
+export async function openWindowsWorkspaceAdapters(
+  input: Parameters<typeof openNodeWorkspaceAdapters>[0],
+) {
+  const adapters = await openNodeWorkspaceAdapters(input);
+  return {
+    ...adapters,
+    credentials: WindowsPasswordVaultCredentialAdapter.forCurrentUser(),
   };
 }

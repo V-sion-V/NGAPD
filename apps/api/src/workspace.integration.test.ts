@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { WorkspaceManifest } from "@ngapd/contracts";
 import {
@@ -23,7 +25,7 @@ const describeWithDatabase = connectionString ? describe : describe.skip;
 describeWithDatabase("workspace sync API integration", () => {
   let database: Database;
   let app: FastifyInstance;
-  let objectRoot: string;
+  let objectRoot: string | null = null;
   let currentTime = new Date("2026-07-25T05:00:00.000Z");
 
   beforeAll(async () => {
@@ -31,7 +33,7 @@ describeWithDatabase("workspace sync API integration", () => {
     await database.schema.dropSchema("public").ifExists().cascade().execute();
     await database.schema.createSchema("public").execute();
     await migrateToLatest(database);
-    objectRoot = await mkdtemp("/private/tmp/ngapd-workspace-sync-p002-objects/api-");
+    objectRoot = await mkdtemp(join(tmpdir(), "ngapd-workspace-sync-p002-objects-api-"));
     app = await buildApp({
       database,
       databaseCheck: async () => true,
@@ -45,7 +47,9 @@ describeWithDatabase("workspace sync API integration", () => {
   afterAll(async () => {
     await app?.close();
     await database?.destroy();
-    await rm(objectRoot, { recursive: true, force: true });
+    if (objectRoot !== null) {
+      await rm(objectRoot, { recursive: true, force: true });
+    }
   });
 
   it("publishes authenticated, schema-backed workspace routes", async () => {

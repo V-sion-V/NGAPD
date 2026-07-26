@@ -17,6 +17,7 @@ export {
   NodePlatformAdapter,
   openMacOsWorkspaceAdapters,
   openNodeWorkspaceAdapters,
+  openWindowsWorkspaceAdapters,
 } from "./node-platform.js";
 export { NodeWorkspaceFileAdapter } from "./adapters/filesystem.js";
 export { HttpWorkspaceApiAdapter } from "./adapters/http.js";
@@ -25,4 +26,5 @@ export {
   NodeWorkspaceRegistryAdapter,
 } from "./adapters/local-state.js";
 export { MacOsKeychainCredentialAdapter } from "./adapters/macos-keychain.js";
+export { WindowsPasswordVaultCredentialAdapter } from "./adapters/windows-password-vault.js";
 export { createWorkspaceMcpServer, startStdioServer } from "./stdio-server.js";

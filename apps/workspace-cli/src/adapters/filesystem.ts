@@ -252,7 +252,13 @@ export class NodeWorkspaceFileAdapter implements WorkspaceFilePort, Materializat
       return this.workspaceRoot;
     }
     const canonical = normalizeWorkspacePath(relativePath);
-    const candidate = resolve(this.workspaceRoot, ...canonical.split("/"));
+    if (process.platform === "win32" && canonical !== relativePath) {
+      throw new WorkspaceCoreError(
+        "PATH_NOT_PORTABLE",
+        `Workspace path '${canonical}' is not stored in Unicode NFC form.`,
+      );
+    }
+    const candidate = resolve(this.workspaceRoot, ...relativePath.split("/"));
     assertContained(this.workspaceRoot, candidate);
     return candidate;
   }
@@ -282,6 +288,13 @@ export class NodeWorkspaceFileAdapter implements WorkspaceFilePort, Materializat
         throw new WorkspaceCoreError(
           "PATH_SYMLINK",
           `Managed file '${relativePath}' was replaced by a symbolic link.`,
+          true,
+        );
+      }
+      if (isWindowsSharingViolation(error)) {
+        throw new WorkspaceCoreError(
+          "SCAN_RETRY",
+          `Managed file '${relativePath}' is in use; retry the scan.`,
           true,
         );
       }
@@ -505,7 +518,13 @@ function assertTransactionId(value: string): void {
 async function syncDirectory(path: string): Promise<void> {
   const handle = await open(path, "r");
   try {
-    await handle.sync();
+    try {
+      await handle.sync();
+    } catch (error) {
+      if (!isUnsupportedWindowsDirectorySync(error)) {
+        throw error;
+      }
+    }
   } finally {
     await handle.close();
   }
@@ -540,4 +559,18 @@ function errorCode(error: unknown): unknown {
   return typeof error === "object" && error !== null && "code" in error
     ? (error as { code?: unknown }).code
     : undefined;
+}
+
+function isUnsupportedWindowsDirectorySync(error: unknown): boolean {
+  return (
+    process.platform === "win32" &&
+    new Set(["EACCES", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"]).has(String(errorCode(error)))
+  );
+}
+
+function isWindowsSharingViolation(error: unknown): boolean {
+  return (
+    process.platform === "win32" &&
+    new Set(["EACCES", "EBUSY", "EPERM"]).has(String(errorCode(error)))
+  );
 }

@@ -22,21 +22,26 @@ import {
   NodeWorkspaceControlAdapter,
   NodeWorkspaceRegistryAdapter,
 } from "./adapters/local-state.js";
+import { WindowsPasswordVaultCredentialAdapter } from "./adapters/windows-password-vault.js";
 import type { WorkspaceCliCommand } from "./commands.js";
+import { openWindowsWorkspaceAdapters } from "./node-platform.js";
 import {
   DefaultWorkspaceCommandRuntime,
+  createDefaultWorkspaceCommandRuntime,
   type WorkspaceRuntimeDependencies,
 } from "./workspace-runtime.js";
 
 const workspaceId = "10000000-0000-4000-8000-000000000001";
 const roots: string[] = [];
-const describeOnMacOs = process.platform === "darwin" ? describe : describe.skip;
+const describeOnDesktop =
+  process.platform === "darwin" || process.platform === "win32" ? describe : describe.skip;
+const describeOnWindows = process.platform === "win32" ? describe : describe.skip;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-describeOnMacOs("DefaultWorkspaceCommandRuntime", () => {
+describeOnDesktop("DefaultWorkspaceCommandRuntime", () => {
   it("pairs, connects, synchronizes, takes over, and resolves both conflict directions", async () => {
     const server = new FakeWorkspaceApi();
     const first = await createRuntime("first", server);
@@ -157,12 +162,47 @@ describeOnMacOs("DefaultWorkspaceCommandRuntime", () => {
   });
 });
 
+describeOnWindows("Windows default Workspace runtime", () => {
+  it("selects PasswordVault without requiring macOS Keychain configuration", async () => {
+    const root = await mkdtemp(String.raw`C:\tmp\ngapd-workspace-sync-p004-t001-runtime-`);
+    roots.push(root);
+    await expect(
+      createDefaultWorkspaceCommandRuntime({
+        NGAPD_WORKSPACE_API_ORIGIN: "https://workspace.example.test",
+        NGAPD_WORKSPACE_ROOT: root,
+        NGAPD_WORKSPACE_VAULT_NAMESPACE: "com.ngapd.workspace.p004.t001.runtime",
+      }),
+    ).resolves.toBeInstanceOf(DefaultWorkspaceCommandRuntime);
+    await expect(
+      createDefaultWorkspaceCommandRuntime({
+        NGAPD_WORKSPACE_API_ORIGIN: "https://workspace.example.test",
+        NGAPD_WORKSPACE_ROOT: root,
+        NGAPD_WORKSPACE_KEYCHAIN_PATH: String.raw`C:\tmp\not-used.keychain-db`,
+        NGAPD_WORKSPACE_KEYCHAIN_PASSWORD: "not-used",
+      }),
+    ).rejects.toMatchObject({ code: "CREDENTIAL_INVALID" });
+
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    const composed = await openWindowsWorkspaceAdapters({
+      configuredRoot: root,
+      registeredPath: "workspace",
+      apiOrigin: "https://workspace.example.test",
+    });
+    expect(composed.credentials).toBeInstanceOf(WindowsPasswordVaultCredentialAdapter);
+    expect(composed.files.workspaceRoot).toBe(workspace);
+  });
+});
+
 async function createRuntime(
   registrationPath: string,
   api: FakeWorkspaceApi,
   lifecycleEvents: Array<"delay" | "SIGINT" | "SIGTERM"> = [],
 ) {
-  const root = await mkdtemp(join(tmpdir(), "ngapd-workspace-sync-p003-runtime-"));
+  const root =
+    process.platform === "win32"
+      ? await mkdtemp(String.raw`C:\tmp\ngapd-workspace-sync-p004-t001-runtime-`)
+      : await mkdtemp(join(tmpdir(), "ngapd-workspace-sync-p003-runtime-"));
   roots.push(root);
   await mkdir(join(root, registrationPath));
   const credentials = new MemoryCredentials();
@@ -175,7 +215,7 @@ async function createRuntime(
     credentials,
     registry,
     clock: { now: () => new Date("2026-07-25T00:00:00.000Z") },
-    platform: "macos",
+    platform: process.platform === "win32" ? "windows" : "macos",
     pairPollMs: 1,
     pairTimeoutMs: 10,
     lifecycle: {

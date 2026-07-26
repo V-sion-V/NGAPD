@@ -11,7 +11,7 @@ import {
   unlink,
 } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   WorkspaceCoreError,
@@ -229,7 +229,7 @@ async function ensureControlDirectory(path: string): Promise<void> {
     );
   }
   const resolved = await realpath(path);
-  if (resolved !== path) {
+  if (relative(resolved, path).length !== 0) {
     throw new WorkspaceCoreError(
       "PATH_SYMLINK",
       "The local control directory must not traverse symbolic links.",
@@ -258,7 +258,7 @@ async function acquireFileLock(path: string): Promise<() => Promise<void>> {
         await syncDirectory(dirname(path));
       };
     } catch (error) {
-      if (!isAlreadyExists(error)) {
+      if (!isFileLockContention(error)) {
         throw error;
       }
       if (await isStaleLock(path)) {
@@ -319,6 +319,9 @@ async function readJson(path: string): Promise<unknown | null> {
     }
     if (error instanceof SyntaxError) {
       throw new WorkspaceCoreError("STATE_INVALID", "Local control state is invalid JSON.");
+    }
+    if (isWindowsSharingViolation(error)) {
+      throw new WorkspaceCoreError("STATE_BUSY", "Local Workspace state is busy.", true);
     }
     throw error;
   }
@@ -598,7 +601,13 @@ function isRevision(value: unknown): value is number {
 async function syncDirectory(path: string): Promise<void> {
   const handle = await open(path, "r");
   try {
-    await handle.sync();
+    try {
+      await handle.sync();
+    } catch (error) {
+      if (!isUnsupportedWindowsDirectorySync(error)) {
+        throw error;
+      }
+    }
   } finally {
     await handle.close();
   }
@@ -629,8 +638,8 @@ function isMissing(error: unknown): boolean {
   return errorCode(error) === "ENOENT";
 }
 
-function isAlreadyExists(error: unknown): boolean {
-  return errorCode(error) === "EEXIST";
+function isFileLockContention(error: unknown): boolean {
+  return errorCode(error) === "EEXIST" || isWindowsSharingViolation(error);
 }
 
 function isNoSuchProcess(error: unknown): boolean {
@@ -641,4 +650,18 @@ function errorCode(error: unknown): unknown {
   return typeof error === "object" && error !== null && "code" in error
     ? (error as { code?: unknown }).code
     : undefined;
+}
+
+function isUnsupportedWindowsDirectorySync(error: unknown): boolean {
+  return (
+    process.platform === "win32" &&
+    new Set(["EACCES", "EINVAL", "EISDIR", "ENOTSUP", "EPERM"]).has(String(errorCode(error)))
+  );
+}
+
+function isWindowsSharingViolation(error: unknown): boolean {
+  return (
+    process.platform === "win32" &&
+    new Set(["EACCES", "EBUSY", "EPERM"]).has(String(errorCode(error)))
+  );
 }

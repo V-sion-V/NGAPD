@@ -37,6 +37,7 @@ import {
   NodeWorkspaceRegistryAdapter,
 } from "./adapters/local-state.js";
 import { MacOsKeychainCredentialAdapter } from "./adapters/macos-keychain.js";
+import { WindowsPasswordVaultCredentialAdapter } from "./adapters/windows-password-vault.js";
 import type {
   WorkspaceCliCommand,
   WorkspaceCliResult,
@@ -867,11 +868,26 @@ export async function createDefaultWorkspaceCommandRuntime(
   return new DefaultWorkspaceCommandRuntime(dependencies);
 }
 
-async function openCredentials(
-  environment: NodeJS.ProcessEnv,
-): Promise<MacOsKeychainCredentialAdapter> {
+async function openCredentials(environment: NodeJS.ProcessEnv): Promise<CredentialPort> {
   const path = environment.NGAPD_WORKSPACE_KEYCHAIN_PATH;
   const password = environment.NGAPD_WORKSPACE_KEYCHAIN_PASSWORD;
+  if (process.platform === "win32") {
+    if (path !== undefined || password !== undefined) {
+      throw new WorkspaceCoreError(
+        "CREDENTIAL_INVALID",
+        "macOS Keychain configuration is not supported on Windows.",
+      );
+    }
+    return WindowsPasswordVaultCredentialAdapter.forCurrentUser(
+      environment.NGAPD_WORKSPACE_VAULT_NAMESPACE ?? "com.ngapd.workspace",
+    );
+  }
+  if (process.platform !== "darwin") {
+    throw new WorkspaceCoreError(
+      "CREDENTIAL_UNAVAILABLE",
+      "Workspace credentials are supported only on macOS and Windows.",
+    );
+  }
   const namespace = environment.NGAPD_WORKSPACE_KEYCHAIN_NAMESPACE ?? "com.ngapd.workspace";
   if ((path === undefined) !== (password === undefined)) {
     throw new WorkspaceCoreError(

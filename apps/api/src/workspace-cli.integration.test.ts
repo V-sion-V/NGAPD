@@ -12,24 +12,38 @@ import {
   type Database,
 } from "@ngapd/database";
 import { LocalObjectStore } from "@ngapd/object-store";
-import { MacOsKeychainCredentialAdapter } from "@ngapd/workspace-cli";
+import {
+  MacOsKeychainCredentialAdapter,
+  WindowsPasswordVaultCredentialAdapter,
+} from "@ngapd/workspace-cli";
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "./app.js";
 
 const connectionString = process.env.DATABASE_TEST_URL;
-const describeOnMacWithDatabase =
-  connectionString && process.platform === "darwin" ? describe : describe.skip;
+const isWindows = process.platform === "win32";
+const isMacOs = process.platform === "darwin";
+const describeOnSupportedPlatformWithDatabase =
+  connectionString && (isMacOs || isWindows) ? describe : describe.skip;
 const cliPath = fileURLToPath(new URL("../../workspace-cli/dist/bin.js", import.meta.url));
 const publicOrigin = "https://ngapd.local";
-const objectRoot = "/private/tmp/ngapd-workspace-sync-p003-server-objects";
-const rootA = "/private/tmp/ngapd-workspace-sync-p003-local-a";
-const rootB = "/private/tmp/ngapd-workspace-sync-p003-local-b";
+const objectRoot = isWindows
+  ? String.raw`C:\tmp\ngapd-workspace-sync-p004-server-objects`
+  : "/private/tmp/ngapd-workspace-sync-p003-server-objects";
+const rootA = isWindows
+  ? String.raw`C:\tmp\ngapd-workspace-sync-p004-local-a`
+  : "/private/tmp/ngapd-workspace-sync-p003-local-a";
+const rootB = isWindows
+  ? String.raw`C:\tmp\ngapd-workspace-sync-p004-local-b`
+  : "/private/tmp/ngapd-workspace-sync-p003-local-b";
 const keychainA = "/private/tmp/ngapd-workspace-sync-p003-device-a.keychain-db";
 const keychainB = "/private/tmp/ngapd-workspace-sync-p003-device-b.keychain-db";
+const windowsNamespaceA = "com.ngapd.workspace.p004.t002.a";
+const windowsNamespaceB = "com.ngapd.workspace.p004.t002.b";
+const integrationTitle = `Workspace CLI real ${isWindows ? "Windows" : "macOS"} integration`;
 
-describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
+describeOnSupportedPlatformWithDatabase(integrationTitle, () => {
   let database: Database;
   let app: FastifyInstance;
   let apiOrigin: string;
@@ -64,7 +78,9 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
     await rm(objectRoot, { recursive: true, force: true });
   });
 
-  it("repeats SYNC-001 through SYNC-009 with two CLI processes and real Keychain/APFS", async () => {
+  it(`repeats SYNC-001 through SYNC-009 with two CLI processes and real ${
+    isWindows ? "PasswordVault/NTFS" : "Keychain/APFS"
+  }`, async () => {
     const first = await runRound(1);
     const second = await runRound(2);
 
@@ -74,7 +90,7 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
     expect(second.finalVersion).toBe(3);
     expect(first.conflictCopies).toBeGreaterThanOrEqual(1);
     expect(second.conflictCopies).toBeGreaterThanOrEqual(1);
-  }, 60_000);
+  }, 300_000);
 
   async function runRound(round: number) {
     await cleanExternalState();
@@ -82,23 +98,36 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
     await mkdir(join(rootB, "workspace"), { recursive: true, mode: 0o700 });
     const passwordA = `test-${randomUUID()}`;
     const passwordB = `test-${randomUUID()}`;
-    const namespaceA = `com.ngapd.workspace.p003.a${round}`;
-    const namespaceB = `com.ngapd.workspace.p003.b${round}`;
-    let adapterA: MacOsKeychainCredentialAdapter | null = null;
-    let adapterB: MacOsKeychainCredentialAdapter | null = null;
+    const namespaceA = isWindows ? windowsNamespaceA : `com.ngapd.workspace.p003.a${round}`;
+    const namespaceB = isWindows ? windowsNamespaceB : `com.ngapd.workspace.p003.b${round}`;
+    let macAdapterA: MacOsKeychainCredentialAdapter | null = null;
+    let macAdapterB: MacOsKeychainCredentialAdapter | null = null;
+    let windowsAdapterA: WindowsPasswordVaultCredentialAdapter | null = null;
+    let windowsAdapterB: WindowsPasswordVaultCredentialAdapter | null = null;
+    let deviceAId: string | null = null;
+    let deviceBId: string | null = null;
+    let primaryWorkspaceId: string | null = null;
+    let taskWorkspaceId: string | null = null;
     currentTime = new Date();
 
     try {
-      adapterA = await MacOsKeychainCredentialAdapter.createIsolated(
-        keychainA,
-        passwordA,
-        namespaceA,
-      );
-      adapterB = await MacOsKeychainCredentialAdapter.createIsolated(
-        keychainB,
-        passwordB,
-        namespaceB,
-      );
+      if (isWindows) {
+        windowsAdapterA = WindowsPasswordVaultCredentialAdapter.forCurrentUser(namespaceA);
+        windowsAdapterB = WindowsPasswordVaultCredentialAdapter.forCurrentUser(namespaceB);
+        expect(await windowsAdapterA.get(deviceCredentialReference())).toBeNull();
+        expect(await windowsAdapterB.get(deviceCredentialReference())).toBeNull();
+      } else {
+        macAdapterA = await MacOsKeychainCredentialAdapter.createIsolated(
+          keychainA,
+          passwordA,
+          namespaceA,
+        );
+        macAdapterB = await MacOsKeychainCredentialAdapter.createIsolated(
+          keychainB,
+          passwordB,
+          namespaceB,
+        );
+      }
       const loginName = `cli-e2e-${round}-${randomUUID().slice(0, 8)}`;
       const registration = await app.inject({
         method: "POST",
@@ -118,11 +147,12 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
         .select(["users.id as user_id", "workspaces.id"])
         .where("users.normalized_login_name", "=", loginName)
         .executeTakeFirstOrThrow();
+      primaryWorkspaceId = workspace.id;
 
       const environmentA = cliEnvironment(rootA, keychainA, passwordA, namespaceA);
       const environmentB = cliEnvironment(rootB, keychainB, passwordB, namespaceB);
-      await pairCli(environmentA, `Round ${round} Device A`, cookie);
-      await pairCli(environmentB, `Round ${round} Device B`, cookie);
+      deviceAId = await pairCli(environmentA, `Round ${round} Device A`, cookie);
+      deviceBId = await pairCli(environmentB, `Round ${round} Device B`, cookie);
 
       expect(
         await runCli(
@@ -212,6 +242,26 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
       expect(
         await runCli(["lease", "takeover", "main", "--confirm", "--json"], environmentB),
       ).toMatchObject({ data: { baseSyncVersion: 3 } });
+      if (isWindows) {
+        const releaseLockedFile = await holdFileAgainstReplacement(
+          join(rootB, "workspace", "story.md"),
+        );
+        try {
+          expect(
+            await runCli(
+              ["conflict", "use-server", "main", "--confirm", "--json"],
+              environmentB,
+              1,
+            ),
+          ).toMatchObject({
+            status: "error",
+            data: { code: "SCAN_RETRY" },
+          });
+          expect(await serverVersion(workspace.id)).toBe(3);
+        } finally {
+          await releaseLockedFile();
+        }
+      }
       expect(
         await runCli(["conflict", "use-server", "main", "--confirm", "--json"], environmentB),
       ).toMatchObject({ status: "recovered", data: { syncVersion: 3 } });
@@ -219,13 +269,14 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
         "late old-holder edit\n",
       );
 
-      await writeFile(join(rootB, "workspace", "CON"), "portable-name rejection\n", "utf8");
+      const rejectedName = isWindows ? "e\u0301-unsafe.txt" : "CON";
+      await writeFile(join(rootB, "workspace", rejectedName), "portable-name rejection\n", "utf8");
       expect(await runCli(["sync", "main", "--json"], environmentB, 1)).toMatchObject({
         status: "error",
         data: { code: "PATH_NOT_PORTABLE" },
       });
       expect(await serverVersion(workspace.id)).toBe(3);
-      await rm(join(rootB, "workspace", "CON"));
+      await rm(join(rootB, "workspace", rejectedName));
 
       const foundation = new FoundationRepository(database);
       const project = await foundation.createProjectWithWorkspace({
@@ -251,6 +302,7 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
         parentTaskId: null,
         explicitOwnerMembershipId: project.ownerMembership.id,
       });
+      taskWorkspaceId = task.workspace.id;
       await mkdir(join(rootA, "task"), { mode: 0o700 });
       expect(
         await runCli(
@@ -289,6 +341,19 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
         data: { paired: false },
       });
       await runCli(["auth", "logout", "--json"], environmentA);
+      if (isWindows) {
+        expect(await windowsAdapterA!.get(deviceCredentialReference())).toBeNull();
+        expect(await windowsAdapterB!.get(deviceCredentialReference())).toBeNull();
+        expect(
+          await windowsAdapterA!.get(leaseCredentialReference(deviceAId, workspace.id)),
+        ).toBeNull();
+        expect(
+          await windowsAdapterA!.get(leaseCredentialReference(deviceAId, task.workspace.id)),
+        ).toBeNull();
+        expect(
+          await windowsAdapterB!.get(leaseCredentialReference(deviceBId, workspace.id)),
+        ).toBeNull();
+      }
 
       const stateText = await readFile(join(rootB, "workspace", ".ngapd", "state.json"), "utf8");
       expect(stateText).not.toMatch(/password|credential|access.?token|lease.?token|secret/iu);
@@ -319,10 +384,18 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
         conflictCopies,
       };
     } finally {
-      await adapterA?.deleteIsolatedKeychain();
-      adapterA = null;
-      await adapterB?.deleteIsolatedKeychain();
-      adapterB = null;
+      if (isWindows) {
+        await cleanWindowsCredentials(windowsAdapterA, deviceAId, [
+          primaryWorkspaceId,
+          taskWorkspaceId,
+        ]);
+        await cleanWindowsCredentials(windowsAdapterB, deviceBId, [primaryWorkspaceId]);
+      } else {
+        await macAdapterA?.deleteIsolatedKeychain();
+        macAdapterA = null;
+        await macAdapterB?.deleteIsolatedKeychain();
+        macAdapterB = null;
+      }
       await rm(rootA, { recursive: true, force: true });
       await rm(rootB, { recursive: true, force: true });
     }
@@ -338,9 +411,13 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
       ...process.env,
       NGAPD_WORKSPACE_API_ORIGIN: apiOrigin,
       NGAPD_WORKSPACE_ROOT: root,
-      NGAPD_WORKSPACE_KEYCHAIN_PATH: keychainPath,
-      NGAPD_WORKSPACE_KEYCHAIN_PASSWORD: keychainPassword,
-      NGAPD_WORKSPACE_KEYCHAIN_NAMESPACE: namespace,
+      ...(isWindows
+        ? { NGAPD_WORKSPACE_VAULT_NAMESPACE: namespace }
+        : {
+            NGAPD_WORKSPACE_KEYCHAIN_PATH: keychainPath,
+            NGAPD_WORKSPACE_KEYCHAIN_PASSWORD: keychainPassword,
+            NGAPD_WORKSPACE_KEYCHAIN_NAMESPACE: namespace,
+          }),
       NGAPD_WORKSPACE_PAIR_POLL_MS: "250",
       NGAPD_WORKSPACE_PAIR_TIMEOUT_MS: "5000",
     };
@@ -350,7 +427,7 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
     environment: NodeJS.ProcessEnv,
     deviceName: string,
     cookie: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const child = spawn(
       process.execPath,
       [cliPath, "pair", "--device-name", deviceName, "--json"],
@@ -374,6 +451,51 @@ describeOnMacWithDatabase("Workspace CLI real macOS integration", () => {
     expect(completed.all).not.toMatch(
       /"(?:deviceCredential|accessToken|leaseToken|correlationSecret)":/u,
     );
+    return String((completed.last.data as { deviceId: string }).deviceId);
+  }
+
+  function deviceCredentialReference() {
+    return {
+      origin: apiOrigin,
+      account: "current-device",
+      kind: "device",
+      workspaceId: null,
+    } as const;
+  }
+
+  function leaseCredentialReference(deviceId: string, workspaceId: string) {
+    return {
+      origin: apiOrigin,
+      account: deviceId,
+      kind: "lease",
+      workspaceId,
+    } as const;
+  }
+
+  async function cleanWindowsCredentials(
+    adapter: WindowsPasswordVaultCredentialAdapter | null,
+    deviceId: string | null,
+    workspaceIds: readonly (string | null)[],
+  ): Promise<void> {
+    if (adapter === null) {
+      return;
+    }
+    await adapter.delete(deviceCredentialReference());
+    if (deviceId !== null) {
+      for (const workspaceId of workspaceIds) {
+        if (workspaceId !== null) {
+          await adapter.delete(leaseCredentialReference(deviceId, workspaceId));
+        }
+      }
+    }
+    expect(await adapter.get(deviceCredentialReference())).toBeNull();
+    if (deviceId !== null) {
+      for (const workspaceId of workspaceIds) {
+        if (workspaceId !== null) {
+          expect(await adapter.get(leaseCredentialReference(deviceId, workspaceId))).toBeNull();
+        }
+      }
+    }
   }
 
   async function serverVersion(workspaceId: string): Promise<number> {
@@ -469,6 +591,95 @@ function exited(child: ReturnType<typeof spawn>): Promise<number | null> {
   return new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => resolve(code));
+  });
+}
+
+async function holdFileAgainstReplacement(path: string): Promise<() => Promise<void>> {
+  const powershell = join(
+    process.env.SystemRoot ?? String.raw`C:\Windows`,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  const child = spawn(
+    powershell,
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      String.raw`
+$request = [Console]::In.ReadLine() | ConvertFrom-Json
+$stream = [System.IO.FileStream]::new(
+  $request.path,
+  [System.IO.FileMode]::Open,
+  [System.IO.FileAccess]::Read,
+  [System.IO.FileShare]::None
+)
+[Console]::Out.WriteLine("READY")
+$null = [Console]::In.ReadLine()
+$stream.Dispose()
+`,
+    ],
+    { shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] },
+  );
+  child.stdin.write(`${JSON.stringify({ path })}\n`);
+  await waitForHelperReady(child);
+  let released = false;
+  return async () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    child.stdin.end("\n");
+    await waitForHelperExit(child);
+  };
+}
+
+function waitForHelperReady(child: ReturnType<typeof spawn>): Promise<void> {
+  return new Promise((resolveReady, rejectReady) => {
+    let output = "";
+    const timeout = setTimeout(() => {
+      cleanup();
+      child.kill();
+      rejectReady(new Error("Timed out waiting for the NTFS lock helper."));
+    }, 5_000);
+    const cleanup = () => {
+      clearTimeout(timeout);
+      child.stdout.off("data", onData);
+      child.off("error", onError);
+      child.off("exit", onEarlyExit);
+    };
+    const onData = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      if (output.includes("READY")) {
+        cleanup();
+        resolveReady();
+      }
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      rejectReady(error);
+    };
+    const onEarlyExit = (code: number | null) => {
+      cleanup();
+      rejectReady(new Error(`NTFS lock helper exited before readiness (${String(code)}).`));
+    };
+    child.stdout.on("data", onData);
+    child.once("error", onError);
+    child.once("exit", onEarlyExit);
+  });
+}
+
+function waitForHelperExit(child: ReturnType<typeof spawn>): Promise<void> {
+  return new Promise((resolveExit, rejectExit) => {
+    if (child.exitCode !== null) {
+      resolveExit();
+      return;
+    }
+    child.once("error", rejectExit);
+    child.once("exit", () => resolveExit());
   });
 }
 
