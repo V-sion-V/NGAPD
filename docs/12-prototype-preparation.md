@@ -1,10 +1,10 @@
-# 原型准备与开发入口
+# 原型准备、验证结果与开发入口
 
 文档状态：可执行基线 1.0
 
 ## 1. 结论
 
-三个前置原型已经具备统一的验证问题、确定性夹具、退出标准和结果记录格式；工程骨架已经覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、领域包、数据库迁移和测试夹具。下一项工作可以直接开始“工作区租约与同步原型”，不需要再补一轮泛化架构设计。
+截至 2026-07-26，工作区同步、平铺树状 Task UI 和 Agent 上下文三个前置原型均已完成并封存为 `completed/passed`，没有开放 finding。工程骨架已经覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、领域包、数据库迁移和测试夹具；同步原型还补齐了真实身份/配对、租约、版本、ObjectStore、macOS/APFS/Keychain 与 Windows/NTFS/PasswordVault 闭环。下一项工作是 M0“领域基线和工程骨架”，不再需要补做前置原型或泛化架构设计。
 
 ## 2. 固定技术基线
 
@@ -89,18 +89,16 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 - API、领域规则和测试夹具单元测试。
 - API、Worker、共享包、React Web 与当时的 Electron 三进程生产构建。
 
-该 Electron 骨架已由 Workspace CLI 与共享核心取代；当前统一门禁覆盖 API、Worker、Web、共享包和 CLI。本机没有安装 Docker，因此只通过 YAML 格式解析和构建文件审查检查 Compose；容器实际启动、PostgreSQL migration、Caddy TLS 和 Linux 卷权限仍需在首个有 Docker 的环境中验证。macOS 文件系统行为也必须在真实 macOS 设备验证，不能用 Windows 模拟结果替代。
+该 Electron 骨架已由 Workspace CLI 与共享核心取代；当前统一门禁覆盖 API、Worker、Web、共享包和 CLI。2026-07-25 至 2026-07-26 的三个原型进一步完成了真实 macOS/Windows 主体：Workspace Sync 覆盖 PostgreSQL 17、ObjectStore、APFS/Keychain、NTFS/PasswordVault 和双进程冲突/恢复；Task UI 覆盖 macOS Chromium 与 Windows Chrome；Agent Context 覆盖两平台 Node 24 确定性 core 与性能。当前仍未由这些原型证明的是完整 Linux Docker Compose 启动、Caddy TLS、Linux 卷权限以及面向部署的备份/恢复闭环，这些继续由后续里程碑验证。
 
-## 7. 第一个原型的实现切片
+## 7. 原型封存与 M0 入口
 
-先执行 [工作区租约与同步原型](../prototypes/workspace-sync/README.md)，按以下顺序形成小而完整的证据链：
+三个原型的最终入口如下：
 
-1. 在 `packages/contracts` 定义 manifest、租约、提交、冲突和稳定错误响应。
-2. 在 `packages/domain` 实现纯租约状态机，先覆盖 `SYNC-001` 至 `SYNC-007`。
-3. 在 `packages/database` 增加工作区、租约、同步版本、manifest 和审计迁移。
-4. 在 API 实现获取/续期/释放租约、读取 manifest、幂等提交和冲突选择。
-5. 在 `@ngapd/workspace-core` 定义规范化路径、受保护路径、SHA-256 扫描和原子替换端口，并在独立平台适配器实现本地文件能力；未来 GUI 只复用共享接口，不调用 CLI 文本命令。
-6. 先用两个进程模拟两台设备，再在 Windows 与 macOS 实机执行同一组场景。
-7. 将每次执行证据写入 `prototypes/workspace-sync/results/`；只有满足退出标准才开始正式详细模块设计。
+| 原型 | 最终状态 | 回顾报告 |
+| --- | --- | --- |
+| Workspace Sync | `completed/passed` | [工作流回顾](requirements/workspace-sync-prototype/workflow-report.md) |
+| Task UI | `completed/passed` | [工作流回顾](requirements/task-ui-prototype/workflow-report.md) |
+| Agent Context | `completed/passed` | [工作流回顾](requirements/agent-context-prototype/workflow-report.md) |
 
-原型不实现完整界面、增量块同步、静默合并或生产安装器。若协议失败，先修订契约/ADR，再进入正式模块设计。
+M0 按[实施路线](07-roadmap-and-validation.md#m0领域基线和工程骨架)推进。开始编码前应建立独立的 schema-v3 需求与实施工作流；第一批正式领域范围包括 Project/Task Key、任务树、继承式有效 Owner、同级 DAG、`graph_version`、状态机、完成冻结、重新打开及其领域/API 不变量测试。原型代码和夹具只作为已验证约束与测试输入，不能替代正式领域需求或把 UI/CLI 逻辑提升为服务端权威。

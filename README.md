@@ -6,7 +6,7 @@ NGAPD 是一款面向独立游戏团队的 AI 原生敏捷项目管理系统。�
 
 > 任务 = 递归执行单元 + 单一责任边界 + AI 上下文边界 + 可追溯知识节点
 
-当前仓库已完成产品与架构基线，正在进入前置原型阶段。正式设计文档如下：
+当前仓库已完成产品与架构基线以及三个前置原型验证，正在进入 M0“领域基线和工程骨架”阶段。三个原型均已在 schema-v3 工作流中封存为 `completed/passed`，状态与回顾见[前置原型](prototypes/README.md)。正式设计文档如下：
 
 - [产品需求说明](docs/01-product-requirements.md)
 - [领域模型与任务状态机](docs/02-domain-model.md)
@@ -19,7 +19,7 @@ NGAPD 是一款面向独立游戏团队的 AI 原生敏捷项目管理系统。�
 - [技术架构决策](docs/09-technical-architecture-decisions.md)
 - [MVP 非功能基线](docs/10-mvp-non-functional-baseline.md)
 - [独立游戏团队逻辑角色模板](docs/11-logical-role-templates.json)
-- [原型准备与开发入口](docs/12-prototype-preparation.md)
+- [原型准备、验证结果与开发入口](docs/12-prototype-preparation.md)
 - [三个前置原型](prototypes/README.md)
 
 ## 已确认的产品边界
@@ -128,4 +128,4 @@ pnpm dev
 
 复制并修改 `.env.example` 后，可使用 `docker compose up --build -d` 启动 Caddy、API、Worker 和 PostgreSQL；Compose 会先执行数据库迁移。该 Compose 配置面向 Linux 自托管服务器，macOS 日常开发不要求安装 Docker Desktop。
 
-开发命令、目录职责、已知限制和第一个同步原型的实现顺序见[原型准备与开发入口](docs/12-prototype-preparation.md)。
+开发命令、目录职责、已知限制、原型封存结果和 M0 开发入口见[原型准备、验证结果与开发入口](docs/12-prototype-preparation.md)。
