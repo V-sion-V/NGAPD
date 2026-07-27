@@ -179,6 +179,71 @@ describeWithDatabase("Task application service PostgreSQL integration", () => {
     });
   });
 
+  it("composes internal Follow impact and versioned Blocker commands without a public route", async () => {
+    const seeded = await seed("APPE");
+    const actor = { userId: seeded.owner.user.id, actorType: "human" as const };
+    const source = await service.createTask(
+      {
+        projectId: seeded.project.project.id,
+        title: "Follow source",
+        parentTaskId: null,
+        explicitOwnerMembershipId: seeded.project.ownerMembership.id,
+      },
+      actor,
+      taskContext("request-follow-source", "follow-source"),
+    );
+    const target = await service.createTask(
+      {
+        projectId: seeded.project.project.id,
+        title: "Follow target",
+        parentTaskId: null,
+        explicitOwnerMembershipId: seeded.project.ownerMembership.id,
+      },
+      actor,
+      taskContext("request-follow-target", "follow-target"),
+    );
+    const impact = await service.previewFollowImpact(
+      { sourceTaskId: source.task.id, targetTaskId: target.task.id },
+      actor,
+      taskContext("request-follow-preview", "follow-preview"),
+    );
+    expect(impact.impact.affectedTaskIds).toEqual([source.task.id, target.task.id].sort());
+    await expect(
+      service.changeFollow(
+        {
+          action: "add",
+          sourceTaskId: source.task.id,
+          targetTaskId: target.task.id,
+          impactConfirmationToken: impact.confirmationToken,
+        },
+        actor,
+        taskContext("request-follow-add", "follow-add"),
+      ),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      service.addBlocker(
+        {
+          taskId: source.task.id,
+          expectedTaskVersion: 1,
+          reason: "Waiting on a confirmed input",
+        },
+        actor,
+        taskContext("request-blocker-add", "blocker-add"),
+      ),
+    ).resolves.toMatchObject({ ok: true, taskVersion: 2 });
+
+    const events = await database
+      .selectFrom("outbox_events")
+      .select(["request_id", "event_type"])
+      .where("request_id", "in", ["request-follow-add", "request-blocker-add"])
+      .orderBy("request_id")
+      .execute();
+    expect(events).toEqual([
+      { request_id: "request-blocker-add", event_type: "task.blocker.changed" },
+      { request_id: "request-follow-add", event_type: "task.follow.changed" },
+    ]);
+  });
+
   async function seed(projectKey: string) {
     const owner = await foundation.createUserWithWorkspace({
       loginName: `${projectKey.toLowerCase()}-owner`,

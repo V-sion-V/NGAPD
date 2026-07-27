@@ -415,6 +415,381 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
     ).resolves.toMatchObject({ ok: true, taskVersion: 2 });
   });
 
+  it("rejects a low-level Follow change by a member who does not own the source Task", async () => {
+    const { project } = await seedProject("FOLLA");
+    const sourceOwner = await addMember(project.project.id, "follow-source-owner");
+    const otherMember = await addMember(project.project.id, "follow-other-member");
+    const source = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-source",
+      explicitOwnerMembershipId: sourceOwner.membership.id,
+    });
+    const target = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-target",
+      explicitOwnerMembershipId: otherMember.membership.id,
+    });
+
+    await expect(
+      repository!.changeFollow({
+        action: "add",
+        sourceTaskId: source.id,
+        targetTaskId: target.id,
+        actorMembershipId: otherMember.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        impactConfirmationToken: "not-confirmed",
+        requestId: "follow-forbidden",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+  });
+
+  it("requires a current deterministic impact confirmation for a Follow change", async () => {
+    const { project } = await seedProject("FOLLB");
+    const source = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-impact-source",
+    });
+    const target = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-impact-target",
+    });
+
+    await expect(
+      repository!.changeFollow({
+        action: "add",
+        sourceTaskId: source.id,
+        targetTaskId: target.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        impactConfirmationToken: "not-confirmed",
+        requestId: "follow-impact-stale",
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "impact_confirmation_stale" });
+  });
+
+  it("rejects a low-level Blocker write by a member who does not own the Task", async () => {
+    const { project } = await seedProject("BLOCKA");
+    const taskOwner = await addMember(project.project.id, "blocker-task-owner");
+    const otherMember = await addMember(project.project.id, "blocker-other-member");
+    const task = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "blocker-owned-task",
+      explicitOwnerMembershipId: taskOwner.membership.id,
+    });
+
+    await expect(
+      repository!.addBlocker({
+        taskId: task.id,
+        actorMembershipId: otherMember.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: task.version,
+        requestId: "blocker-forbidden",
+        reason: "Not mine to block",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+  });
+
+  it("rejects a stale Task version before adding a Blocker", async () => {
+    const { project } = await seedProject("BLOCKB");
+    const task = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "blocker-stale-task",
+    });
+
+    await expect(
+      repository!.addBlocker({
+        taskId: task.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: task.version + 1,
+        requestId: "blocker-stale-version",
+        reason: "Stale blocker",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "task_version_conflict" });
+  });
+
+  it("allows Follow maintenance only for the source Owner or an explicit admin session", async () => {
+    const { project } = await seedProject("FOLLC");
+    const sourceOwner = await addMember(project.project.id, "follow-authorized-source");
+    const targetOwner = await addMember(project.project.id, "follow-authorized-target");
+    const source = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-authorized-source",
+      explicitOwnerMembershipId: sourceOwner.membership.id,
+    });
+    const target = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "follow-authorized-target",
+      explicitOwnerMembershipId: targetOwner.membership.id,
+    });
+    const impact = await repository!.previewFollowImpact({
+      sourceTaskId: source.id,
+      targetTaskId: target.id,
+    });
+    expect(impact).toMatchObject({
+      ok: true,
+      impact: { operation: "follow_change", affectedTaskIds: [source.id, target.id].sort() },
+    });
+    if (!impact.ok) {
+      throw new Error("expected Follow impact");
+    }
+    const baseInput = {
+      sourceTaskId: source.id,
+      targetTaskId: target.id,
+      impactConfirmationToken: impact.confirmationToken,
+    };
+
+    await expect(
+      repository!.changeFollow({
+        ...baseInput,
+        action: "add",
+        actorMembershipId: sourceOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "follow-owner-add",
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      repository!.changeFollow({
+        ...baseInput,
+        action: "remove",
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "agent",
+        adminModeActive: true,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "follow-agent-admin-unconfirmed",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+    await expect(
+      repository!.changeFollow({
+        ...baseInput,
+        action: "remove",
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "agent",
+        adminModeActive: true,
+        adminSessionEnteredFromExplicitUserRequest: true,
+        requestId: "follow-agent-admin-confirmed",
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      repository!.changeFollow({
+        ...baseInput,
+        action: "remove",
+        actorMembershipId: sourceOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "follow-missing-remove",
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "dependency_not_found" });
+
+    await database!
+      .updateTable("memberships")
+      .set({ active: false })
+      .where("id", "=", sourceOwner.membership.id)
+      .execute();
+    await expect(
+      repository!.changeFollow({
+        ...baseInput,
+        action: "add",
+        actorMembershipId: sourceOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "follow-inactive-owner",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+  });
+
+  it("atomically versions an authorized Blocker and requires explicit Agent admin intent", async () => {
+    const { project } = await seedProject("BLOCKC");
+    const taskOwner = await addMember(project.project.id, "blocker-authorized-owner");
+    const task = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "blocker-authorized-task",
+      explicitOwnerMembershipId: taskOwner.membership.id,
+    });
+
+    const ownerResult = await repository!.addBlocker({
+      taskId: task.id,
+      actorMembershipId: taskOwner.membership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      expectedTaskVersion: task.version,
+      requestId: "blocker-owner-add",
+      reason: "Owner-visible blocker",
+    });
+    expect(ownerResult).toMatchObject({ ok: true, taskVersion: 2 });
+    await expect(
+      repository!.addBlocker({
+        taskId: task.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: 2,
+        requestId: "blocker-admin-disabled",
+        reason: "Admin mode is required",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+    await expect(
+      repository!.addBlocker({
+        taskId: task.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "agent",
+        adminModeActive: true,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: 2,
+        requestId: "blocker-agent-admin-unconfirmed",
+        reason: "Agent lacks explicit admin request",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+    await expect(
+      repository!.addBlocker({
+        taskId: task.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "agent",
+        adminModeActive: true,
+        adminSessionEnteredFromExplicitUserRequest: true,
+        expectedTaskVersion: 2,
+        requestId: "blocker-agent-admin-confirmed",
+        reason: "Explicitly confirmed admin blocker",
+      }),
+    ).resolves.toMatchObject({ ok: true, taskVersion: 3 });
+
+    const [storedTask, blockers, audit, outbox] = await Promise.all([
+      repository!.findTask(task.id),
+      database!
+        .selectFrom("task_blockers")
+        .select(({ fn }) => fn.countAll<string>().as("count"))
+        .where("task_id", "=", task.id)
+        .executeTakeFirstOrThrow(),
+      database!
+        .selectFrom("audit_events")
+        .select(["result", "task_version_before", "task_version_after"])
+        .where("request_id", "=", "blocker-owner-add")
+        .executeTakeFirstOrThrow(),
+      database!
+        .selectFrom("outbox_events")
+        .select(["event_type", "payload"])
+        .where("request_id", "=", "blocker-owner-add")
+        .executeTakeFirstOrThrow(),
+    ]);
+    expect(storedTask?.version).toBe(3);
+    expect(Number(blockers.count)).toBe(2);
+    expect(audit).toEqual({
+      result: "success",
+      task_version_before: "1",
+      task_version_after: "2",
+    });
+    expect(outbox).toMatchObject({
+      event_type: "task.blocker.changed",
+      payload: { taskId: task.id, taskVersion: 2 },
+    });
+  });
+
+  it("rejects Blocker writes from inactive Owners and on archived or completed Tasks", async () => {
+    const { project } = await seedProject("BLOCKD");
+    const inactiveOwner = await addMember(project.project.id, "blocker-inactive-owner");
+    const inactiveTask = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "blocker-inactive-task",
+      explicitOwnerMembershipId: inactiveOwner.membership.id,
+    });
+    await database!
+      .updateTable("memberships")
+      .set({ active: false })
+      .where("id", "=", inactiveOwner.membership.id)
+      .execute();
+    await expect(
+      repository!.addBlocker({
+        taskId: inactiveTask.id,
+        actorMembershipId: inactiveOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: inactiveTask.version,
+        requestId: "blocker-inactive-owner",
+        reason: "Inactive owner",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+
+    const { project: lifecycleProject } = await seedProject("BLOCKE");
+    const archivedTask = await createTask({
+      projectId: lifecycleProject.project.id,
+      actorMembershipId: lifecycleProject.ownerMembership.id,
+      label: "blocker-archived-task",
+    });
+    await database!
+      .updateTable("tasks")
+      .set({ archived: true })
+      .where("id", "=", archivedTask.id)
+      .execute();
+    await expect(
+      repository!.addBlocker({
+        taskId: archivedTask.id,
+        actorMembershipId: lifecycleProject.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: archivedTask.version,
+        requestId: "blocker-archived-task",
+        reason: "Archived task",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "task_archived" });
+
+    const completedTask = await createTask({
+      projectId: lifecycleProject.project.id,
+      actorMembershipId: lifecycleProject.ownerMembership.id,
+      label: "blocker-completed-task",
+    });
+    await database!.transaction().execute(async (transaction) => {
+      await transaction
+        .updateTable("workspaces")
+        .set({ lifecycle: "frozen" })
+        .where("scope_type", "=", "task")
+        .where("scope_id", "=", completedTask.id)
+        .execute();
+      await transaction
+        .updateTable("tasks")
+        .set({ base_status: "done", frozen: true })
+        .where("id", "=", completedTask.id)
+        .execute();
+    });
+    await expect(
+      repository!.addBlocker({
+        taskId: completedTask.id,
+        actorMembershipId: lifecycleProject.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: completedTask.version,
+        requestId: "blocker-completed-task",
+        reason: "Completed task",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "completed_task_frozen" });
+  });
+
   it("uses a recursive CTE for depth-20 effective Owner and diagnoses inactivity", async () => {
     const { project } = await seedProject("TREE");
     let parentTaskId: string | null = null;

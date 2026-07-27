@@ -6,7 +6,9 @@ import { API_ERROR_CODES, DOMAIN_ERROR_CODES } from "./errors.js";
 import { ResourceInvalidationEventSchema } from "./events.js";
 import { ProjectDomainStateSchema, ProjectKeySchema } from "./projects.js";
 import {
+  AddTaskBlockerCommandSchema,
   ChangeTaskOwnerCommandSchema,
+  ChangeTaskFollowCommandSchema,
   TaskArchiveLifecycleSchema,
   TaskImpactSetSchema,
   TaskStatusSchema,
@@ -81,6 +83,40 @@ describe("formal M0 runtime contracts", () => {
       Value.Check(ChangeTaskOwnerCommandSchema, {
         ...command,
         expectedAffectedWorkspaceSyncVersions: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("requires impact confirmation for Follow changes and a version for Blocker writes", () => {
+    const sourceTaskId = "00000000-0000-4000-8000-000000000001";
+    const targetTaskId = "00000000-0000-4000-8000-000000000002";
+    expect(
+      Value.Check(ChangeTaskFollowCommandSchema, {
+        action: "add",
+        sourceTaskId,
+        targetTaskId,
+        impactConfirmationToken: "confirmed-impact",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(ChangeTaskFollowCommandSchema, {
+        action: "add",
+        sourceTaskId,
+        targetTaskId,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(AddTaskBlockerCommandSchema, {
+        taskId: sourceTaskId,
+        expectedTaskVersion: 2,
+        reason: "Waiting for an external decision",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(AddTaskBlockerCommandSchema, {
+        taskId: sourceTaskId,
+        expectedTaskVersion: 0,
+        reason: "",
       }),
     ).toBe(false);
   });

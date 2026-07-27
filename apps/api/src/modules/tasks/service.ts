@@ -1,5 +1,7 @@
 import type {
+  AddTaskBlockerCommand,
   ChangeTaskOwnerCommand,
+  ChangeTaskFollowCommand,
   CompleteTaskCommand,
   MoveTaskCommand,
   ReopenTaskCommand,
@@ -197,6 +199,94 @@ export class TaskApplicationService {
       projectId: task.projectId,
       targetId: task.id,
       action: "task.move",
+      taskVersionBefore: task.version,
+    });
+  }
+
+  async previewFollowImpact(
+    input: { sourceTaskId: string; targetTaskId: string },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const source = await this.requireTask(
+      input.sourceTaskId,
+      actor,
+      context,
+      "task.follow.preview",
+    );
+    await this.requireActor(source.projectId, actor, context, {
+      action: "task.follow.preview",
+      targetId: source.id,
+    });
+    const result = await this.tasks.previewFollowImpact(input);
+    return this.requireSuccess(result, {
+      actor,
+      context,
+      projectId: source.projectId,
+      targetId: source.id,
+      action: "task.follow.preview",
+    });
+  }
+
+  async changeFollow(
+    command: ChangeTaskFollowCommand,
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const source = await this.requireTask(
+      command.sourceTaskId,
+      actor,
+      context,
+      "task.follow.change",
+    );
+    const applicationActor = await this.requireActor(source.projectId, actor, context, {
+      action: "task.follow.change",
+      targetId: source.id,
+    });
+    const result = await this.tasks.changeFollow({
+      ...command,
+      actorMembershipId: applicationActor.membershipId!,
+      actorType: actor.actorType,
+      adminModeActive: context.adminModeActive,
+      adminSessionEnteredFromExplicitUserRequest:
+        context.adminSessionEnteredFromExplicitUserRequest,
+      requestId: context.requestId,
+    });
+    return this.requireSuccess(result, {
+      actor,
+      context,
+      projectId: source.projectId,
+      targetId: source.id,
+      action: "task.follow.change",
+    });
+  }
+
+  async addBlocker(
+    command: AddTaskBlockerCommand,
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const task = await this.requireTask(command.taskId, actor, context, "task.blocker.add");
+    const applicationActor = await this.requireActor(task.projectId, actor, context, {
+      action: "task.blocker.add",
+      targetId: task.id,
+      taskVersionBefore: task.version,
+    });
+    const result = await this.tasks.addBlocker({
+      ...command,
+      actorMembershipId: applicationActor.membershipId!,
+      actorType: actor.actorType,
+      adminModeActive: context.adminModeActive,
+      adminSessionEnteredFromExplicitUserRequest:
+        context.adminSessionEnteredFromExplicitUserRequest,
+      requestId: context.requestId,
+    });
+    return this.requireSuccess(result, {
+      actor,
+      context,
+      projectId: task.projectId,
+      targetId: task.id,
+      action: "task.blocker.add",
       taskVersionBefore: task.version,
     });
   }

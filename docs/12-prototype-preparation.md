@@ -4,7 +4,7 @@
 
 ## 1. 结论
 
-截至 2026-07-28，工作区同步、平铺树状 Task UI 和 Agent 上下文三个前置原型，以及 M0“领域基线和工程骨架”初始实现均已完成并封存为 `completed/passed`。工程基线覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、正式领域规则、数据库迁移/Repository、测试夹具、CI 和六服务 Compose 发布栈。当前正在执行 M0 `change-1` 纠正运行，关闭三项授权与 Owner/Workspace 一致性缺口；完成后下一路线图目标是 M1“项目、角色和成员”。
+截至 2026-07-28，工作区同步、平铺树状 Task UI 和 Agent 上下文三个前置原型，以及 M0“领域基线和工程骨架”的 change-0/change-1/change-2 均已完成并封存为 `completed/passed`。工程基线覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、正式领域规则、数据库迁移/Repository、测试夹具、CI 和六服务 Compose 发布栈。`change-2` 已关闭 Follow/Blocker 低层授权与并发条件缺口，并澄清 AC-010 的 M0/M2 验收来源链；仓库下一路线图目标是 M1“项目、角色和成员”。
 
 ## 2. 固定技术基线
 
@@ -101,4 +101,4 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 | Task UI | `completed/passed` | [工作流回顾](requirements/task-ui-prototype/workflow-report.md) |
 | Agent Context | `completed/passed` | [工作流回顾](requirements/agent-context-prototype/workflow-report.md) |
 
-M0 初始实现已按[实施路线](07-roadmap-and-validation.md#m0领域基线和工程骨架)完成，最终状态和验证证据见 [M0 初始实现记录](requirements/m0-domain-baseline/change-0.md)。当前 [change-1 执行状态](requirements/m0-domain-baseline/execution/change-1/execution-state.md)为 `in_progress/pending`，阶段为 P-001；它完成后，下一目标是 [M1“项目、角色和成员”](07-roadmap-and-validation.md#m1项目角色和成员)，并应在编码前建立独立的 schema-v3 需求与实施工作流。原型代码和夹具只作为已验证约束与测试输入，不能替代正式领域需求或把 UI/CLI 逻辑提升为服务端权威。
+M0 初始实现和两轮纠正已按[实施路线](07-roadmap-and-validation.md#m0领域基线和工程骨架)完成，最终状态和验证证据见 [M0 初始实现记录](requirements/m0-domain-baseline/change-0.md)、[change-1 完成记录](requirements/m0-domain-baseline/change-1.md)与 [change-2 完成记录](requirements/m0-domain-baseline/change-2.md)；[change-2 执行状态](requirements/m0-domain-baseline/execution/change-2/execution-state.md)为 `completed/passed`。下一目标是 [M1“项目、角色和成员”](07-roadmap-and-validation.md#m1项目角色和成员)，并应在编码前建立独立的 schema-v3 需求与实施工作流。原型代码和夹具只作为已验证约束与测试输入，不能替代正式领域需求或把 UI/CLI 逻辑提升为服务端权威。

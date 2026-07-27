@@ -176,4 +176,15 @@ describe("task follows", () => {
       ]),
     ).toEqual(["b", "c"]);
   });
+
+  it("rejects a Follow from a completed source Task", () => {
+    expect(
+      validateTaskFollow({
+        sourceTaskId: "a",
+        targetTaskId: "b",
+        tasks: [{ ...node("a", "owner-a"), baseStatus: "done" }, node("b", "owner-b")],
+        follows: [],
+      }),
+    ).toEqual({ ok: false, reason: "completed_task_frozen", subject: "a->b" });
+  });
 });

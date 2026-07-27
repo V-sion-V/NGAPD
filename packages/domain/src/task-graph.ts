@@ -352,6 +352,12 @@ export function validateTaskFollow(input: {
   if (source.projectId !== target.projectId) {
     return { ok: false, reason: "cross_project_dependency", subject };
   }
+  if (source.baseStatus === "done") {
+    return { ok: false, reason: "completed_task_frozen", subject };
+  }
+  if (source.archived) {
+    return { ok: false, reason: "endpoint_archived", subject };
+  }
   if (
     input.follows.some(
       (follow) =>

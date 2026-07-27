@@ -187,6 +187,25 @@ export const MoveTaskCommandSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const ChangeTaskFollowCommandSchema = Type.Object(
+  {
+    action: DependencyActionSchema,
+    sourceTaskId: Type.String({ format: "uuid" }),
+    targetTaskId: Type.String({ format: "uuid" }),
+    impactConfirmationToken: Type.String({ minLength: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export const AddTaskBlockerCommandSchema = Type.Object(
+  {
+    taskId: Type.String({ format: "uuid" }),
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    reason: Type.String({ minLength: 1, maxLength: 4_000 }),
+  },
+  { additionalProperties: false },
+);
+
 export type TaskStatus = Static<typeof TaskStatusSchema>;
 export type TaskEffectiveStatus = Static<typeof TaskEffectiveStatusSchema>;
 export type TaskArchiveLifecycle = Static<typeof TaskArchiveLifecycleSchema>;
@@ -205,3 +224,5 @@ export type CompleteTaskCommand = Static<typeof CompleteTaskCommandSchema>;
 export type ReopenTaskCommand = Static<typeof ReopenTaskCommandSchema>;
 export type ChangeTaskOwnerCommand = Static<typeof ChangeTaskOwnerCommandSchema>;
 export type MoveTaskCommand = Static<typeof MoveTaskCommandSchema>;
+export type ChangeTaskFollowCommand = Static<typeof ChangeTaskFollowCommandSchema>;
+export type AddTaskBlockerCommand = Static<typeof AddTaskBlockerCommandSchema>;

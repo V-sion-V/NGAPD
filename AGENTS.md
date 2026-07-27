@@ -8,10 +8,10 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 
 ## 当前开发阶段与目标
 
-- 已完成基线：三个前置原型、Workspace CLI 初始工作流，以及 M0“领域基线和工程骨架”；M0 `change-0` 为 `completed/passed`。
-- 当前活动工作：M0 `change-1` 严格纠正运行，状态为 `in_progress`、验证结论为 `pending`，当前阶段为 P-001；目标是修正 move-to-root 授权、继承 Owner 变化的后代 Workspace 原子一致性，以及低层子任务创建授权。
-- 后续路线图：`change-1` 完成后进入 M1“项目、角色和成员”，交付注册登录、项目生命周期、逻辑工作区、成员审批、唯一 Project Owner 及转移、管理员模式审计和逻辑角色绑定。
-- 阶段依据：[M0 完成记录](docs/requirements/m0-domain-baseline/change-0.md)、[活动 change-1 执行状态](docs/requirements/m0-domain-baseline/execution/change-1/execution-state.md)与[实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
+- 已完成基线：三个前置原型、Workspace CLI 初始工作流，以及 M0“领域基线和工程骨架”；M0 `change-0`、`change-1` 与严格纠正运行 `change-2` 均为 `completed/passed`。
+- 当前开发状态：M0 没有活动纠正运行，Follow/Blocker 低层授权与并发条件缺口已关闭，AC-010 的 M0/M2 验收来源链已澄清；仓库可进入 M1 的独立需求澄清与规划。
+- 后续路线图：M1“项目、角色和成员”交付注册登录、项目生命周期、逻辑工作区、成员审批、唯一 Project Owner 及转移、管理员模式审计和逻辑角色绑定。
+- 阶段依据：[M0 change-2 完成记录](docs/requirements/m0-domain-baseline/change-2.md)、[change-2 执行状态](docs/requirements/m0-domain-baseline/execution/change-2/execution-state.md)与[实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
 
 ## 文档索引
 

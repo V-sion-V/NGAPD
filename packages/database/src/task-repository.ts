@@ -139,6 +139,33 @@ export type MoveTaskResult =
       impact?: Extract<TaskImpactDecision, { ok: true }>;
     };
 
+export type FollowImpactResult =
+  | Extract<TaskImpactDecision, { ok: true }>
+  | {
+      ok: false;
+      reason: TaskGraphFailureReason | "task_archived" | "invalid_task_tree";
+    };
+
+export type FollowMutationResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: TaskGraphFailureReason | "task_archived" | "impact_confirmation_stale";
+      impact?: Extract<TaskImpactDecision, { ok: true }>;
+    };
+
+export type AddTaskBlockerResult =
+  | { ok: true; blockerId: string; taskVersion: number }
+  | {
+      ok: false;
+      reason:
+        | "task_not_found"
+        | "task_archived"
+        | "completed_task_frozen"
+        | "task_version_conflict"
+        | "forbidden";
+    };
+
 export class TaskRepository {
   constructor(private readonly database: Kysely<DatabaseSchema>) {}
 
@@ -885,42 +912,151 @@ export class TaskRepository {
     });
   }
 
+  async previewFollowImpact(input: {
+    sourceTaskId: string;
+    targetTaskId: string;
+  }): Promise<FollowImpactResult> {
+    const tasks = await this.database
+      .selectFrom("tasks")
+      .select(["id", "project_id", "base_status", "archived", "frozen"])
+      .where("id", "in", [...new Set([input.sourceTaskId, input.targetTaskId])])
+      .execute();
+    const source = tasks.find((task) => task.id === input.sourceTaskId);
+    const target = tasks.find((task) => task.id === input.targetTaskId);
+    if (!source || !target) {
+      return { ok: false, reason: "task_not_found" };
+    }
+    if (source.id === target.id) {
+      return { ok: false, reason: "self_dependency" };
+    }
+    if (source.project_id !== target.project_id) {
+      return { ok: false, reason: "cross_project_dependency" };
+    }
+    if (source.frozen || source.base_status === "done") {
+      return { ok: false, reason: "completed_task_frozen" };
+    }
+    if (source.archived) {
+      return { ok: false, reason: "task_archived" };
+    }
+    return loadImpactDecision(this.database, source.project_id, "follow_change", source.id, {
+      relatedTaskIds: [target.id],
+    });
+  }
+
   async changeFollow(input: {
     action: "add" | "remove";
     sourceTaskId: string;
     targetTaskId: string;
     actorMembershipId: string;
-    actorType?: "human" | "agent";
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    impactConfirmationToken: string;
     requestId?: string;
-  }): Promise<{ ok: true } | { ok: false; reason: string }> {
+  }): Promise<FollowMutationResult> {
     return this.database.transaction().execute(async (transaction) => {
-      const source = await transaction
+      const lockedTasks = await transaction
         .selectFrom("tasks")
-        .select("project_id")
-        .where("id", "=", input.sourceTaskId)
-        .executeTakeFirst();
-      if (!source) {
+        .select(["id", "project_id", "base_status", "archived", "frozen"])
+        .where("id", "in", [...new Set([input.sourceTaskId, input.targetTaskId])].sort())
+        .orderBy("id")
+        .forUpdate()
+        .execute();
+      const source = lockedTasks.find((task) => task.id === input.sourceTaskId);
+      const target = lockedTasks.find((task) => task.id === input.targetTaskId);
+      if (!source || !target) {
         return { ok: false, reason: "task_not_found" };
       }
+      if (source.project_id !== target.project_id) {
+        return { ok: false, reason: "cross_project_dependency" };
+      }
+      if (source.frozen || source.base_status === "done") {
+        return { ok: false, reason: "completed_task_frozen" };
+      }
+      if (source.archived) {
+        return { ok: false, reason: "task_archived" };
+      }
       const facts = await loadProjectFacts(transaction, source.project_id);
+      const graphNodes = await mapGraphNodes(facts);
+      if (graphNodes.length !== facts.tasks.length) {
+        return { ok: false, reason: "forbidden" };
+      }
       const follows = await transaction
         .selectFrom("task_follows")
         .select(["source_task_id", "target_task_id"])
         .where("project_id", "=", source.project_id)
         .execute();
+      const followEdges = follows.map((follow) => ({
+        sourceTaskId: follow.source_task_id,
+        targetTaskId: follow.target_task_id,
+      }));
+      const validation = validateTaskFollow({
+        sourceTaskId: input.sourceTaskId,
+        targetTaskId: input.targetTaskId,
+        tasks: graphNodes,
+        follows: input.action === "add" ? followEdges : [],
+      });
+      if (!validation.ok) {
+        return { ok: false, reason: validation.reason };
+      }
+      const owners = resolveProjectOwners(facts);
+      const actorMembership = facts.memberships.find(
+        (membership) => membership.id === input.actorMembershipId,
+      );
+      const sourceOwner = owners.ok ? owners.ownerByTaskId.get(source.id) : undefined;
+      if (!actorMembership || !sourceOwner) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const authorization = resolveTaskOperationAuthorization(
+        {
+          serverProjectId: source.project_id,
+          targetProjectIds: [source.project_id, target.project_id],
+          affectedOwnerMembershipIds: [sourceOwner],
+          projectOwnerMembershipId: facts.project.ownerMembershipId,
+          projectRootOperation: false,
+          adminSessionActive: input.adminModeActive,
+          actorType: input.actorType,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+          impactConfirmationRequired: false,
+          impactConfirmed: true,
+        },
+        {
+          userId: actorMembership.userId,
+          active: actorMembership.userActive,
+          membership: {
+            id: actorMembership.id,
+            userId: actorMembership.userId,
+            projectId: actorMembership.projectId,
+            role: actorMembership.role,
+            active: actorMembership.active,
+          },
+        },
+      );
+      if (!authorization.allowed) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const impact = await loadImpactDecision(
+        transaction,
+        source.project_id,
+        "follow_change",
+        source.id,
+        {
+          relatedTaskIds: [target.id],
+        },
+      );
+      if (!impact.ok || impact.confirmationToken !== input.impactConfirmationToken) {
+        return {
+          ok: false,
+          reason: "impact_confirmation_stale",
+          ...(impact.ok ? { impact } : {}),
+        };
+      }
+      const existing = followEdges.some(
+        (follow) =>
+          follow.sourceTaskId === input.sourceTaskId && follow.targetTaskId === input.targetTaskId,
+      );
       if (input.action === "add") {
-        const validation = validateTaskFollow({
-          sourceTaskId: input.sourceTaskId,
-          targetTaskId: input.targetTaskId,
-          tasks: await mapGraphNodes(facts),
-          follows: follows.map((follow) => ({
-            sourceTaskId: follow.source_task_id,
-            targetTaskId: follow.target_task_id,
-          })),
-        });
-        if (!validation.ok) {
-          return { ok: false, reason: validation.reason };
-        }
         await transaction
           .insertInto("task_follows")
           .values({
@@ -932,6 +1068,9 @@ export class TaskRepository {
           })
           .execute();
       } else {
+        if (!existing) {
+          return { ok: false, reason: "dependency_not_found", impact };
+        }
         await transaction
           .deleteFrom("task_follows")
           .where("source_task_id", "=", input.sourceTaskId)
@@ -941,7 +1080,7 @@ export class TaskRepository {
       await writeTaskSuccessRecords(transaction, {
         projectId: source.project_id,
         actorMembershipId: input.actorMembershipId,
-        actorType: input.actorType ?? "human",
+        actorType: input.actorType,
         targetId: input.sourceTaskId,
         requestId: input.requestId ?? randomUUID(),
         action: "task.follow.change",
@@ -962,22 +1101,69 @@ export class TaskRepository {
   async addBlocker(input: {
     taskId: string;
     actorMembershipId: string;
-    actorType?: "human" | "agent";
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
     requestId?: string;
     reason: string;
-  }): Promise<{ ok: true; blockerId: string } | { ok: false; reason: string }> {
+  }): Promise<AddTaskBlockerResult> {
     return this.database.transaction().execute(async (transaction) => {
       const task = await transaction
         .selectFrom("tasks")
-        .select(["project_id", "frozen"])
+        .select(["id", "project_id", "base_status", "archived", "version", "frozen"])
         .where("id", "=", input.taskId)
         .forUpdate()
         .executeTakeFirst();
       if (!task) {
         return { ok: false, reason: "task_not_found" };
       }
-      if (task.frozen) {
+      if (task.frozen || task.base_status === "done") {
         return { ok: false, reason: "completed_task_frozen" };
+      }
+      if (task.archived) {
+        return { ok: false, reason: "task_archived" };
+      }
+      const facts = await loadProjectFacts(transaction, task.project_id);
+      const owners = resolveProjectOwners(facts);
+      const actorMembership = facts.memberships.find(
+        (membership) => membership.id === input.actorMembershipId,
+      );
+      const taskOwner = owners.ok ? owners.ownerByTaskId.get(task.id) : undefined;
+      if (!actorMembership || !taskOwner) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const authorization = resolveTaskOperationAuthorization(
+        {
+          serverProjectId: task.project_id,
+          targetProjectIds: [task.project_id],
+          affectedOwnerMembershipIds: [taskOwner],
+          projectOwnerMembershipId: facts.project.ownerMembershipId,
+          projectRootOperation: false,
+          adminSessionActive: input.adminModeActive,
+          actorType: input.actorType,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+          impactConfirmationRequired: false,
+          impactConfirmed: true,
+        },
+        {
+          userId: actorMembership.userId,
+          active: actorMembership.userActive,
+          membership: {
+            id: actorMembership.id,
+            userId: actorMembership.userId,
+            projectId: actorMembership.projectId,
+            role: actorMembership.role,
+            active: actorMembership.active,
+          },
+        },
+      );
+      if (!authorization.allowed) {
+        return { ok: false, reason: "forbidden" };
+      }
+      if (Number(task.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
       }
       const blockerId = randomUUID();
       await transaction
@@ -990,20 +1176,27 @@ export class TaskRepository {
           created_by_membership_id: input.actorMembershipId,
         })
         .execute();
+      const updated = await transaction
+        .updateTable("tasks")
+        .set({ version: sql`version + 1`, updated_at: sql`now()` })
+        .where("id", "=", task.id)
+        .returning("version")
+        .executeTakeFirstOrThrow();
+      const taskVersion = Number(updated.version);
       await writeTaskSuccessRecords(transaction, {
         projectId: task.project_id,
         actorMembershipId: input.actorMembershipId,
-        actorType: input.actorType ?? "human",
+        actorType: input.actorType,
         targetId: input.taskId,
         requestId: input.requestId ?? randomUUID(),
         action: "task.blocker.add",
         reasonCode: "TASK_BLOCKER_ADDED",
-        taskVersionBefore: null,
-        taskVersionAfter: null,
+        taskVersionBefore: Number(task.version),
+        taskVersionAfter: taskVersion,
         eventType: "task.blocker.changed",
-        payload: { taskId: input.taskId, blockerId },
+        payload: { taskId: input.taskId, blockerId, taskVersion },
       });
-      return { ok: true, blockerId };
+      return { ok: true, blockerId, taskVersion };
     });
   }
 
@@ -1198,7 +1391,7 @@ async function loadImpactDecision(
   projectId: string,
   operation: "move" | "archive" | "delete" | "owner_change" | "cascade_reopen" | "follow_change",
   taskId: string,
-  options: { targetParentTaskId?: string | null } = {},
+  options: { relatedTaskIds?: readonly string[]; targetParentTaskId?: string | null } = {},
 ): Promise<TaskImpactDecision> {
   const facts = await loadProjectFacts(executor, projectId);
   const owners = resolveProjectOwners(facts);
