@@ -9,6 +9,7 @@ const composeExecutable = process.env.COMPOSE_BIN ?? "docker";
 const composePrefix = process.env.COMPOSE_BIN ? [] : ["compose"];
 const httpPort = process.env.NGAPD_SMOKE_HTTP_PORT ?? "18080";
 const httpsPort = process.env.NGAPD_SMOKE_HTTPS_PORT ?? "18443";
+const useVerifiedPreloadedImages = process.env.NGAPD_COMPOSE_VERIFIED_PRELOAD === "1";
 const ephemeralPassword = randomBytes(24).toString("hex");
 const environment = {
   ...process.env,
@@ -98,6 +99,22 @@ function parseConfig() {
   );
 }
 
+function parseComposePs() {
+  const raw = compose(["ps", "--format", "json"], { capture: true }).stdout.trim();
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    return raw
+      .split(/\r?\n/u)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+  }
+}
+
 function curlGateway(pathname) {
   const command = process.platform === "win32" ? "curl.exe" : "curl";
   return run(
@@ -146,8 +163,10 @@ try {
   process.stdout.write("[compose-smoke] validating resolved configuration\n");
   parseConfig();
 
-  process.stdout.write("[compose-smoke] building all service images\n");
-  compose(["build", "--pull"]);
+  process.stdout.write(
+    `[compose-smoke] building all service images (${useVerifiedPreloadedImages ? "verified preloaded bases" : "pull current bases"})\n`,
+  );
+  compose(useVerifiedPreloadedImages ? ["build"] : ["build", "--pull"]);
 
   process.stdout.write("[compose-smoke] starting clean six-service stack\n");
   compose(["up", "--detach", "--wait", "--wait-timeout", "240"]);
@@ -187,7 +206,26 @@ try {
     capture: true,
     allowFailure: true,
   }).stdout.trim();
-  check(apiPort === "" && workerPort === "", "API/Worker ports must remain unpublished");
+  check(
+    ["", ":0"].includes(apiPort) && ["", ":0"].includes(workerPort),
+    "API/Worker port lookup must not return a host binding",
+  );
+  const runtimeServices = parseComposePs();
+  for (const serviceName of ["api", "worker"]) {
+    const service = runtimeServices.find(
+      (candidate) => (candidate.Service ?? candidate.service) === serviceName,
+    );
+    check(service, `${serviceName} must appear in the running service inventory`);
+    const runtimePublishers = service.Publishers ?? service.publishers ?? [];
+    check(
+      runtimePublishers.every((publisher) => {
+        const publishedPort = Number(publisher.PublishedPort ?? publisher.publishedPort ?? 0);
+        const hostUrl = publisher.URL ?? publisher.url ?? "";
+        return publishedPort === 0 && hostUrl === "";
+      }),
+      `${serviceName} must have no runtime publishers`,
+    );
+  }
 
   const logs = compose(["logs", "--no-color"], { capture: true }).stdout;
   check(!logs.includes(ephemeralPassword), "ephemeral PostgreSQL password appeared in logs");

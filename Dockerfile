@@ -43,9 +43,12 @@ CMD ["node", "apps/worker/dist/index.js"]
 FROM caddy:${CADDY_VERSION}-alpine AS web
 
 COPY deploy/Web.Caddyfile /etc/caddy/Caddyfile
-COPY --from=build --chown=caddy:caddy /workspace/apps/web/dist /srv
+COPY --from=build --chown=10001:10001 /workspace/apps/web/dist /srv
 
-RUN chown -R caddy:caddy /config /data
+RUN setcap -r /usr/bin/caddy \
+  && addgroup -S -g 10001 ngapd \
+  && adduser -S -D -H -u 10001 -G ngapd ngapd \
+  && chown -R 10001:10001 /config /data /srv
 
-USER caddy
+USER 10001:10001
 EXPOSE 8080

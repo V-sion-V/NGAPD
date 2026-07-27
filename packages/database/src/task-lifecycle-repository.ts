@@ -10,11 +10,10 @@ import {
   resolveTaskOperationAuthorization,
   type OwnershipMembership,
   type ReopenPolicy,
-  type TaskDependencyEdge,
   type TaskLifecycleNode,
   type TaskOwnershipNode,
 } from "@ngapd/domain";
-import { sql, type Kysely, type Transaction } from "kysely";
+import type { Kysely, Transaction } from "kysely";
 
 import type { DatabaseSchema } from "./types.js";
 

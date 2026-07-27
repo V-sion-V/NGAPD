@@ -10,8 +10,9 @@
     "pnpm": ">=11 <12"
   },
   "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 --if-present build",
-    "build:packages": "pnpm --filter \"./packages/**\" --workspace-concurrency=1 build",
+    "build": "pnpm build:packages && pnpm build:apps",
+    "build:apps": "pnpm --filter @ngapd/workspace-cli build && pnpm --filter @ngapd/api build && pnpm --filter @ngapd/worker build && pnpm --filter @ngapd/web build",
+    "build:packages": "pnpm --filter @ngapd/contracts build && pnpm --filter @ngapd/domain build && pnpm --filter @ngapd/workspace-core build && pnpm --filter @ngapd/database build && pnpm --filter @ngapd/object-store build && pnpm --filter @ngapd/test-fixtures build",
     "check": "pnpm format:check && pnpm lint && pnpm build && pnpm typecheck && pnpm test",
     "ci": "pnpm ci:verify && pnpm db:migrate && pnpm db:migrate && pnpm check",
     "ci:verify": "node scripts/ci/verify-toolchain.mjs --require-database",

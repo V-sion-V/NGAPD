@@ -5,9 +5,9 @@ import { createDatabase } from "./client.js";
 import { migrateToLatest } from "./migrator.js";
 import {
   canonicalDatabaseTarget,
-  DatabaseSchemaError,
   inspectDatabaseSchema,
   resetFormalSchema,
+  type DatabaseSchemaError,
 } from "./schema-profile.js";
 
 const connectionString = process.env.DATABASE_TEST_URL;

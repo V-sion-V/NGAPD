@@ -6,7 +6,7 @@ import {
 } from "@ngapd/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { ApplicationError } from "../../application-errors.js";
+import type { ApplicationError } from "../../application-errors.js";
 import { TaskApplicationService, type TaskApplicationContext } from "./service.js";
 
 const connectionString = process.env.DATABASE_TEST_URL;

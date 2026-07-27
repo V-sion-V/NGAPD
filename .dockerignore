@@ -3,6 +3,7 @@
 .env
 **/node_modules
 **/dist
+**/*.tsbuildinfo
 **/coverage
 prototypes/**/results
 npm-debug.log*

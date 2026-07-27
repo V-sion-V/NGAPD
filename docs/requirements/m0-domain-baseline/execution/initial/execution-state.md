@@ -3,18 +3,18 @@
 - 运行编号：`initial`
 - 运行类型：`首次实现`
 - 目标记录：`change-0.md`
-- 运行状态：`blocked`
+- 运行状态：`completed`
 - 交付与验证策略：`relaxed`
-- 验证结论：`pending`
+- 验证结论：`passed`
 - 当前路线图修订：`1`
 - 需求指纹（SHA-256）：`844c505f9c6b15ae64f217026ba27c7c6ac22dd394f0ce80112a43960a8037d1`
 - 路线图或变更计划指纹（SHA-256）：`eb90885df1246062d407f9284e015de0e0521d93e0e00f35ab5debc21af366ad`
 - 当前阶段：`P-004`
 - 当前阶段计划：[`phase-004-plan.md`](phase-004-plan.md) revision 1，SHA-256 `f505ef3f129e91f6b4ea97169134d9b85bdbae34068028e5bc42f79a67c4b79f`
-- 当前任务：`P-004-T-002`
+- 当前任务：无（initial run 已完成）
 - 下一发现项编号：`FND-I-001`
 - 项目基线：分支 `codex/m0-domain-baseline`，提交 `7f23d31592c72e258efa613a73ea862b9e0f0289`
-- 最后更新时间：`2026-07-27T04:39:08+08:00`
+- 最后更新时间：`2026-07-28T00:47:20+08:00`
 
 ## 1. 运行目标或待生效变更
 
@@ -33,16 +33,18 @@
 | P-001 | 生产领域语义、授权、共享契约和错误目录 | [`phase-001-plan.md`](phase-001-plan.md) revision 1 | [`phase-001-result.md`](phase-001-result.md) | completed |
 | P-002 | 正式 Schema、Repository 与真实 PostgreSQL 并发/事务 | [`phase-002-plan.md`](phase-002-plan.md) revision 1 | [`phase-002-result.md`](phase-002-result.md) | completed |
 | P-003 | 模块应用服务、错误/审计/Outbox/Worker/SSE/Workspace 集成 | [`phase-003-plan.md`](phase-003-plan.md) revision 1 | [`phase-003-result.md`](phase-003-result.md) | completed |
-| P-004 | 最终 CI、迁移、Compose、规模、安全与整体验收 | [`phase-004-plan.md`](phase-004-plan.md) revision 1 | 尚无 | blocked |
+| P-004 | 最终 CI、迁移、Compose、规模、安全与整体验收 | [`phase-004-plan.md`](phase-004-plan.md) revision 1 | [`phase-004-result.md`](phase-004-result.md) | completed |
 
-P-003 三个任务和全部阶段关闭门禁已完成并通过；P-004 当前在 T-002 六服务 Compose 发布栈的真实 Linux 容器引擎前置处阻塞。
+P-001–P-004 的 12 个任务和全部阶段关闭门禁均已完成并通过；`phase-004-result.md`、`effective-requirements.md` 与 `change-0.md` 已一致生成，initial run 已封存。
 
 ## 3. 当前检查点
 
-- 检查点状态：P-001、P-002、P-003 及其全部任务和 P-004-T-001 已完成；P-004-T-002 在 post-task 检查点前 `blocked`，不得视为完成。
-- 已完成阶段：P-001、P-002、P-003。
-- 阶段结果：[`phase-001-result.md`](phase-001-result.md)，SHA-256 `cdad119ffe04d74054dbee35e1dda1712f7e90bd5eb2613931e0f1b1b6cb8f8e`；[`phase-002-result.md`](phase-002-result.md)，SHA-256 `ada169fd96445f5cbdd0130d3235995e91e3bd8c70317aec02a930438c9dba2a`；[`phase-003-result.md`](phase-003-result.md)，SHA-256 `8eae48d2820cc81ae09b5ce4bda111416b2da87a6fb1e5d171516a5455c30006`。
-- 当前阶段/任务：P-004 / P-004-T-002。
+- 检查点状态：P-001–P-004 的四份不可变阶段结果、当前有效需求和 change-0 已一致生成；全部验证和环境清理通过，运行状态为 `completed`。
+- 已完成阶段：P-001、P-002、P-003、P-004。
+- 阶段结果：[`phase-001-result.md`](phase-001-result.md)，SHA-256 `cdad119ffe04d74054dbee35e1dda1712f7e90bd5eb2613931e0f1b1b6cb8f8e`；[`phase-002-result.md`](phase-002-result.md)，SHA-256 `ada169fd96445f5cbdd0130d3235995e91e3bd8c70317aec02a930438c9dba2a`；[`phase-003-result.md`](phase-003-result.md)，SHA-256 `8eae48d2820cc81ae09b5ce4bda111416b2da87a6fb1e5d171516a5455c30006`；[`phase-004-result.md`](phase-004-result.md)，SHA-256 `8b9e9681b3921aeca604464075cee6258d9aac0274ad59dead63d457a1e1322f`。
+- 最终工件：[`../../effective-requirements.md`](../../effective-requirements.md)，SHA-256 `69959b7bcf8303e22c49d1278c3e103d9e9598e421147e3ccd1e07ac41a9d728`；[`../../change-0.md`](../../change-0.md)，SHA-256 `16674766402841e287af63fc1119661ec593ea96bfdabe5efe87c18168c0d7ed`。
+- 当前阶段/任务：P-004 completed / 无。
+- 恢复基线：用户在阻塞期间将完整候选保存并推送为提交 `19cc33070b0e90646a80259e457cfdbc78b76d0c`（提交说明 `no docker`）；该提交相对原始项目基线包含当前记录的 P-001–P-004-T-002 范围，分支与远端一致且恢复时工作区干净。此保存动作不改变原始项目基线、任务归属或尚未通过的 T-002/T-003 门禁。
 - P-001-T-003 实际范围：修改 Contracts 的 Projects/Tasks/Errors、package/tsconfig；新增运行时契约测试；新增 M0 Domain fixture 与测试并导出。Contracts `index.ts` 无需修改，因为既有模块级导出已覆盖新增符号。
 - P-001-T-003 结果：Project Key、Task 基础/有效状态、独立归档、Project 状态、图作用域、依赖请求、影响集合和扩展错误目录具有 TypeBox/TS 单一来源；固定深度 20、200 同级和 5,000 活动任务 fixture 直接调用生产领域接口。
 - 公共兼容：Identity/Pairing/Workspace 三个契约哈希与任务前一致；API/CLI/Workspace Core/Object Store 无代码变化；客户端没有导入 `@ngapd/domain` 或 `@ngapd/database`；未新增公共路由。
@@ -97,9 +99,17 @@ P-003 三个任务和全部阶段关闭门禁已完成并通过；P-004 当前�
 - P-004-T-002 容器运行时：官方便携 Podman `6.0.2` ZIP SHA-256 `2c055d36…1b78e` 匹配；客户端可运行。WSL layer 已按 OCI manifest 完整下载为 `249,426,976` bytes，SHA-256 `e22b4f68…a5b7ec` 匹配；官方 Docker Compose `v2.40.3` 为 `77,739,008` bytes，SHA-256 `4c864dd7…e1532` 与发布清单匹配。命名 machine `ngapd-p004` 初始化时确认宿主未启用 WSL；machine list 仍为 `[]`。备用 Hyper-V provider 的官方 manifest/层可解析，但宿主没有 `vmms` 服务或 Hyper-V PowerShell 模块，不能作为可用 provider；未下载其 1,099,504,009-byte layer。
 - P-004-T-002 预期范围：精确 Node 24.18.0/pnpm 11.9.0 镜像；独立 Web 与 Gateway；Worker live/ready；六服务 health/depends_on、对象/备份/数据库卷、非 root、仅 Gateway 宿主入口和 API/Worker internal network；可重跑 Compose smoke 与 CI compose job。唯一 smoke project 为 `ngapd-p004-smoke`，宿主 HTTP/HTTPS 端口使用非特权 P-004 专用值。
 - P-004-T-002 完成条件：真实 Podman Linux engine + Docker Compose CLI 下 config、全镜像 build、空卷 up、六服务状态/health、Gateway Web/API、重复 migrate、容器用户/端口/卷和 API/Worker 外部网络负向全部通过；down 后无 smoke 容器/网络/卷，machine 与 task-owned downloads 最终按 phase recovery 管理。
-- P-004-T-002 当前实际范围：锁定 Dockerfile 的 Node 24.18.0/pnpm 11.9.0/Caddy 2.10.2；增加独立 Web 镜像和 Web/Gateway health；Worker 增加只读 live/ready server 并把 ready 绑定到 runner 与正式 Schema profile；Compose 扩为 PostgreSQL/migrate/API/Worker/Web/Gateway 六服务，增加 depends-on health、五个持久卷、非 root/read-only/no-new-privileges、仅 Gateway 端口和 internal backend；增加可清理的 `ngapd-p004-smoke` build/up/assert/down 脚本和 CI Compose job。
-- P-004-T-002 已通过的部分验证：Worker health 2/2、Worker full 2 passed/2 skipped、typecheck/build、相关 ESLint/Prettier 与 `git diff --check` 通过；Compose `config --quiet` 通过并解析出六服务与五卷。真实 image build/up/health/network/volume/down 尚未运行，不能用静态证据替代。
-- P-004-T-002 阻塞与安全状态：管理员 WSL 安装授权请求被用户取消，未修改 Windows 可选功能且未重启；当前无 Podman machine、容器、网络、卷、后台下载进程或 PostgreSQL。保留已校验的 Node/Podman/WSL image/Compose task-owned 工件以便恢复；未创建 P-004 result、`change-0.md` 或 effective snapshot。
+- P-004-T-002 实际范围：锁定 Dockerfile 的 Node 24.18.0/pnpm 11.9.0/Caddy 2.10.2；增加独立 Web 镜像和 Web/Gateway health；Worker 增加只读 live/ready server并把 ready 绑定到 runner 与正式 Schema profile；Compose 扩为 PostgreSQL/migrate/API/Worker/Web/Gateway 六服务，增加 depends-on health、五个持久卷、非 root/read-only/no-new-privileges、仅 Gateway 端口和 internal backend；增加可清理的 `ngapd-p004-smoke` build/up/assert/down 脚本和 CI Compose job。真实 clean build 另暴露并修复根 workspace 构建顺序、Docker context 携带 `*.tsbuildinfo`、Caddy 基础镜像无运行用户/低端口 file capability，以及 Podman `EXPOSE` 的 `:0` publisher 兼容语义。
+- P-004-T-002 结果：Podman 6.0.2 WSL machine 与 Docker Compose 2.40.3 下，六服务 config/full image build/首次空卷 up/health 全部通过；Gateway HTTPS 可达 Web/API live/ready；第二次 migrate no-op；API/Worker/Web/Gateway UID 均非 0；对象/备份卷经 API 重启后保持；API/Worker 外部请求失败且无实际宿主 PortBindings；随机数据库密码未出现在日志。最终 smoke 输出 `services:6`、`applicationEgress:"blocked"`、`persistentVolumes:"verified"` 并退出 0。
+- P-004-T-002 环境关闭：`down --volumes --remove-orphans` 后，专用 project 容器、网络、五个卷均为空。唯一 machine `ngapd-p004` 继续运行，只为同阶段 T-003 最终 PostgreSQL/Compose 门禁保留；三张官方基础镜像已用逐 blob SHA-256 校验的离线 OCI archive 预载，须在 P-004 关闭时与 machine/task-owned 工件精确清理。
+- P-004-T-003 基线：分支 HEAD 仍为用户保存提交 `19cc33070b0e90646a80259e457cfdbc78b76d0c`；T-002 post-task 工作树只包含 `.dockerignore`、`Dockerfile`、`deploy/Caddy.Dockerfile`、`package.json`、`scripts/compose/smoke.mjs` 与本 state 的已解释修改，`git diff --check` 通过。当前无 smoke 容器/网络/卷，machine `ngapd-p004` running。
+- P-004-T-003 预期范围与完成条件：冻结最终产品代码后，在精确 Node 24.18.0/pnpm 11.9.0 与隔离 PostgreSQL 17.10 上只运行一次根 `pnpm check`，完成 full integration、三原型、兼容/依赖/路由/秘密/网络/租户/单写者与最终 Compose 门禁；随后清理全部 task-owned 环境并按 result → effective requirements → change-0 → completed state 顺序封存。任一 core/hard/影响未知失败停止 finalization。
+- P-004-T-003 实际范围：最终根 lint 暴露的四个纯静态问题只在对应测试文件改为 type-only import，并从 `task-lifecycle-repository.ts` 删除两个未使用 import；没有改变产品行为、Schema、公共契约或依赖。其余工作仅为验证、只读审查和本工作流证据。
+- P-004-T-003 最终根与数据库：唯一隔离 PostgreSQL `17.10` 只绑定 `127.0.0.1:55438`，正式 profile 为 `m0-domain-baseline` v1，`0001`–`0007` 首次 migrate 后第二次 no-op。在精确 Node `24.18.0` / pnpm `11.9.0` 和非空 `DATABASE_TEST_URL` 下，唯一一次完整执行到底的根 `pnpm check` 退出 0：format、ESLint、确定性 build、10 workspace typecheck 与全部适用测试通过。
+- P-004-T-003 原型与兼容：Workspace Sync 的 Workspace Core 27/27 和 fixtures 40/40、Task UI 的 fixtures 40/40 与 Web 5/5、Agent Context 无头 runner 12/12 通过；Agent Context 三档 80 次 P95 分别为 `0.683 ms`、`1.259 ms`、`0.576 ms`。公共路由没有 `/api/v1/projects` 或 `/api/v1/tasks`，Web/CLI 没有 Domain/Database/Object Store 服务端依赖，Identity/Pairing/Workspace 兼容范围无 T-003 产品 diff。
+- P-004-T-003 安全与整合：外部 API/AI/LLM/WebSocket、凭据材料与生产 debug 扫描通过；最终数据库活动租约、待处理 Outbox、重复活动租约组均为 0。最终 Compose smoke 在最新代码状态再次完成全镜像构建、六服务健康、Gateway Web/API、重复迁移、非 root、持久卷、API/Worker 无外网、无宿主直暴露、秘密日志负向和 clean down，输出 `services:6`、`applicationEgress:"blocked"`、`persistentVolumes:"verified"` 并退出 0。
+- P-004-T-003 findings 结论：FR-001–FR-028 与 AC-001–AC-026 core 全部通过；AC-027 的 200-DAG 40 样本 P95、AC-028 的三个确定性随机 DAG seed、AC-029 的 Object checkpoint/查询与运行诊断均通过。无 `FND-I-*`，验证结论为 `passed`。
+- P-004-T-003 环境关闭：删除唯一最终 PostgreSQL 容器后 `55438` 无 listener；停止并删除唯一 `ngapd-p004` machine 后 Podman machine list 与 WSL 发行版列表均为空；无 `podman`/`docker-compose`/`wslhost` 进程或 `18443`/`18080` listener。25 个逐项解析且位于 `C:\tmp` 的 Node/Podman/Compose/OCI/archive/log/script 路径已删除，P-004 名称扫描为空。
 - 运行时：Codex 隔离运行时 Node.js `24.14.0`、pnpm `11.9.0`，满足 `package.json` 的 `>=24 <25`；`.node-version` 为 `24.18.0`，补丁差异保留到最终发布门禁复核。
 - 数据库执行环境：PATH、`C:\Program Files\PostgreSQL\17` 与 Docker 仍无系统入口；P-002 使用的 task-owned PostgreSQL 17.10 只连接回环 `55435/ngapd_m0_domain_p002`。阶段关闭后 server 已停止、端口无监听，runtime/data/log/jar 四个精确临时路径已删除。
 
@@ -117,8 +127,10 @@ P-003 三个任务和全部阶段关闭门禁已完成并通过；P-004 当前�
 | P-003-T-002 | 2026-07-27T03:17:14+08:00 | 前向事件投影、Outbox/Graphile Worker 与认证 SSE cursor 完成 | Database outbox 3/3、profile 4/4；真实 Graphile Worker 2/2；API SSE 3/3；Contracts 4/4；四包 typecheck/build passed |
 | P-003-T-003 | 2026-07-27T03:41:13+08:00 | Object consistency checkpoint、Workspace 平台端口和 P-003 技术/兼容关闭完成 | Object Store 7/7、Workspace Core 27/27；Database 28/28、Worker 2/2、API 20/20、Web 5/5、CLI affected 20/20；八包 typecheck/build passed |
 | P-004-T-001 | 2026-07-27T04:05:56+08:00 | 精确运行时、可执行 CI/数据库门禁与最终规模 supplemental 证据完成 | Node 24.18.0/pnpm 11.9.0；preflight 正/负；frozen lock；双 migrate/profile；Database 2 files/9 tests，P95 0.872 ms，3 random seeds；typecheck/build/format/lint/diff passed |
+| P-004-T-002 | 2026-07-28T00:18:10+08:00 | 六服务 Compose 发布栈、clean image build、健康、网络与持久卷门禁完成 | Podman 6.0.2/WSL2 + Compose 2.40.3；六服务 build/up/health、Gateway Web/API、repeat migrate、4 个非 root 用户、卷重启、API/Worker egress/ports、secret logs、down cleanup passed |
+| P-004-T-003 | 2026-07-28T00:37:06+08:00 | 最终根、PostgreSQL、原型、兼容、安全、supplemental 与 Compose 整体验收完成 | Node 24.18.0/pnpm 11.9.0 根 `pnpm check` 退出 0；PostgreSQL 17.10/profile/双 migrate；三原型 core；边界/秘密扫描；最终六服务 Compose smoke 全部 passed |
 
-当前已完成 3/3 个 P-001、3/3 个 P-002、3/3 个 P-003 和 1/3 个 P-004 任务。
+当前已完成 3/3 个 P-001、3/3 个 P-002、3/3 个 P-003 和 3/3 个 P-004 任务。
 
 ## 5. 运行累计文件变化
 
@@ -129,22 +141,26 @@ P-003 三个任务和全部阶段关闭门禁已完成并通过；P-004 当前�
 | `docs/requirements/m0-domain-baseline/implementation-plan.md` | add | 初始四阶段路线图 revision 1 |
 | `.github/workflows/ci.yml` | add | 精确 Node/pnpm、PostgreSQL、双迁移与根 required gate |
 | `scripts/ci/verify-toolchain.mjs` | add | CI 精确工具链和数据库环境 fail-closed 预检 |
-| `package.json` | modify | 增加 `ci`、`ci:verify` 与 `compose:smoke` 入口 |
-| `Dockerfile` | modify | 锁定镜像运行时并生成非 root API/Worker/独立 Web targets |
+| `.dockerignore` | modify | 排除可再生 `*.tsbuildinfo`，防止 clean image build 误跳过 TypeScript emit |
+| `package.json` | modify | 增加 `ci`、`ci:verify`、`compose:smoke` 入口和确定性 packages/apps 构建顺序 |
+| `Dockerfile` | modify | 锁定镜像运行时并生成非 root API/Worker/独立 Web targets；显式 Caddy UID/GID 并移除不需要的低端口 capability |
 | `compose.yaml` | modify | 六服务依赖、健康、持久卷、权限、端口与 internal network |
-| `deploy/Caddy.Dockerfile` | modify | 锁定并以非 root Gateway 运行 Caddy |
+| `deploy/Caddy.Dockerfile` | modify | 锁定并以显式 UID/GID 10001 非 root Gateway 运行 Caddy，移除不需要的低端口 capability |
 | `deploy/Caddyfile` | modify | Gateway live/ready、API health/API 与独立 Web 反向代理 |
 | `deploy/Web.Caddyfile` | add | 独立静态 Web 服务与 live/ready |
 | `apps/worker/src/health-server.ts` | add | Worker live/ready 只读健康端点 |
 | `apps/worker/src/health-server.test.ts` | add | Worker liveness/readiness/fail-closed 测试 |
 | `apps/worker/src/index.ts` | modify | runner/profile readiness 与健康 server 生命周期 |
-| `scripts/compose/smoke.mjs` | add | 唯一 project 的真实 config/build/up/assert/down 门禁 |
+| `scripts/compose/smoke.mjs` | add | 唯一 project 的真实 config/build/up/assert/down 门禁；默认 pull，支持显式逐 blob 校验后的离线预载恢复，并兼容证明无 host binding 的 Podman `:0` publisher |
 | `docs/requirements/m0-domain-baseline/execution/initial/phase-001-plan.md` | add | 当前 P-001 expanded 阶段计划 revision 1 |
 | `docs/requirements/m0-domain-baseline/execution/initial/phase-002-plan.md` | add | 当前 P-002 expanded 阶段计划 revision 1 |
 | `docs/requirements/m0-domain-baseline/execution/initial/phase-002-result.md` | add | P-002 immutable completed/passed 证据 |
 | `docs/requirements/m0-domain-baseline/execution/initial/phase-003-plan.md` | add | 当前 P-003 expanded 阶段计划 revision 1 |
 | `docs/requirements/m0-domain-baseline/execution/initial/phase-004-plan.md` | add | 当前 P-004 expanded 阶段计划 revision 1 |
 | `docs/requirements/m0-domain-baseline/execution/initial/execution-state.md` | add | 初始运行持久状态 |
+| `docs/requirements/m0-domain-baseline/execution/initial/phase-004-result.md` | add | P-004 immutable completed/passed 证据 |
+| `docs/requirements/m0-domain-baseline/effective-requirements.md` | add | 应用至 change-0 的可再生成当前有效需求 |
+| `docs/requirements/m0-domain-baseline/change-0.md` | add | initial run 不可变实现与验证记录 |
 | `packages/domain/src/identifiers.ts` | add | Project/Task Key、Sequence 与不可变 Project Key 领域契约 |
 | `packages/domain/src/identifiers.test.ts` | add | 标识规范、拒绝与不可变测试 |
 | `packages/domain/src/task-tree.ts` | add | 同项目邻接树、移动和稳定遍历契约 |
@@ -234,6 +250,19 @@ P-003 三个任务和全部阶段关闭门禁已完成并通过；P-004 当前�
 | 2026-07-27 | Worker health/full test、typecheck/build、相关 ESLint/Prettier、`git diff --check` | health 2/2；Worker 2 passed/2 skipped；静态、构建和工作树卫生通过 | P-004-T-002 partial |
 | 2026-07-27 | Docker Compose v2.40.3 `config --quiet/services/volumes` | 发布 SHA-256 `4c864dd7…e1532` 匹配；六服务和五持久卷可解析 | P-004-T-002 partial；非真实启动证据 |
 | 2026-07-27 | Podman 6.0.2 WSL/Hyper-V provider 探测 | WSL image SHA-256 `e22b4f68…a5b7ec` 匹配，但 WSL 功能未启用；Hyper-V 管理服务/模块不存在；machine list `[]` | AC-023 core blocker |
+| 2026-07-28 | WSL/Podman machine 恢复 | 用户证据与宿主复核：WSL 2.7.11.0、内核 6.18.33.2-2、默认 WSL2、无发行版；唯一 `ngapd-p004` 从已校验 WSL image 初始化并提供默认 Docker npipe，Podman info 为 Linux/amd64 6.0.2 | Q-001 resolved / T-002 runtime |
+| 2026-07-28 | 官方基础镜像分块 OCI 预载 | Docker Hub 长流重复 EOF 后，1 MiB Range 续传并逐 manifest/config/layer 大小+SHA-256 校验；Node manifest `d45d78e7…352d6`/80,292,593 bytes，Caddy `d8c17a86…16b83`/22,511,111，PostgreSQL `af194ccf…c746a`/117,155,648；Podman inspect digest 一致 | T-002可信离线恢复 |
+| 2026-07-28 | clean image build 诊断与修复 | 真实构建依次暴露 workspace 顺序、宿主 tsbuildinfo、缺失 Caddy 用户/file capability；均以确定性根因修复，最终 6 packages/4 apps clean build 与五个应用镜像构建通过 | FR-027 / AC-022–AC-023 |
+| 2026-07-28 | `NGAPD_COMPOSE_VERIFIED_PRELOAD=1 pnpm compose:smoke` | 六服务首次空卷 up/health；Gateway Web/API；repeat migrate；API/Worker/Web/Gateway 非 root；对象/备份卷跨 API restart；API/Worker egress blocked、无实际 host binding；密码日志负向；最终 JSON 通过并退出 0 | FR-027 / AC-001、AC-023、AC-026 |
+| 2026-07-28 | 精确 Node/pnpm 根 build 与 T-002 hygiene | Node 24.18.0/pnpm 11.9.0 根 build 通过；smoke Prettier/ESLint、Compose config、`git diff --check` 通过 | T-002 post-task |
+| 2026-07-28 | T-002 专用资源清理 | Compose ps、Podman project containers/volumes/networks 均为空；machine `ngapd-p004` 仅为同阶段 T-003 保留 | T-002 environment close |
+| 2026-07-28 | T-003 最终 PostgreSQL migrate/profile 与根门禁 | PostgreSQL 17.10；正式 profile v1、`0001`–`0007`、第二次 migrate no-op；精确 Node 24.18.0/pnpm 11.9.0 下唯一完整根 `pnpm check` 退出 0 | FR-001–FR-027 / AC-001–AC-022、AC-025–AC-026 |
+| 2026-07-28 | 三份原型核心回归 | Workspace Core 27/27 + fixtures 40/40；Task UI fixtures 40/40 + Web 5/5；Agent Context 12/12，三档 80 次 P95 `0.683/1.259/0.576 ms` | FR-024、FR-026、FR-028 / AC-019–AC-020、AC-024–AC-025 |
+| 2026-07-28 | 最终兼容、依赖、路由与安全扫描 | 无公共 Project/Task CRUD；Web/CLI 无服务端实现依赖；无 AI/LLM/WebSocket、凭据材料或生产 debug；活动 lease、pending outbox、重复 active lease group 均 0 | FR-017–FR-026、FR-028 / AC-017–AC-021、AC-024、AC-026 |
+| 2026-07-28 | 最新代码状态最终 Compose smoke | clean 全镜像 build；六服务 health；Gateway Web/API；repeat migrate；非 root；持久卷；API/Worker egress blocked；无 host binding/秘密日志；clean down，退出 0 | FR-027 / AC-001、AC-023、AC-026 |
+| 2026-07-28 | supplemental 最终汇总 | 200-DAG 40 样本 P95 `0.872 ms`；三个 96-node/160-edge random DAG seed；Object checkpoint 与查询/运行诊断均通过 | AC-027–AC-029 |
+| 2026-07-28 | P-004 最终环境清理 | 最终 PostgreSQL 容器、`ngapd-p004` machine、WSL 发行版、任务进程/端口与 25 个精确 `C:\tmp` 路径全部为空；`git diff --check` 通过 | P-004 environment close |
+| 2026-07-28 | initial finalization | P-004 result SHA-256 `8b9e9681…e1322f`、effective requirements `69959b7b…a9d728`、change-0 `16674766…0d7ed`；四阶段/12 任务、FR/AC、findings 与环境状态交叉一致 | initial completed/passed |
 | 2026-07-27 | PostgreSQL/Docker 入口探测与既有 Windows 证据复核 | 当前无本地入口或活动目标；仓库证据记录 PostgreSQL 17.10 测试 bundle 的发布 SHA-512 和成功隔离运行，实施前必须重新取得/核验 | P-002 执行前置，非数据库通过证据 |
 | 2026-07-27 | P-002-T-001 实施前 Git/status、Database 逐文件 SHA-256、端口与 postgres 进程探测 | Database 范围无任务前改动；55430–55440 无已观察监听，未发现 postgres 进程；P-001 用户/运行 diff 完整保留 | P-002-T-001 baseline |
 | 2026-07-27 | Maven Central bundle 下载 SHA-512；`postgres/initdb/pg_ctl --version` | `8c5a905a…473bcf8` 与发布记录完全匹配；三个二进制均为 PostgreSQL 17.10 | P-002-T-001 可信运行时 |
@@ -291,9 +320,9 @@ P-001、P-002、P-003 阶段验证结论均为 `passed`；initial run 总体验�
 
 | ID | 阶段/任务 | 问题 | 已确认事实 | 可选方案与影响 | 需要确认 | 状态 | 用户回答及来源 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Q-001 | P-004 / P-004-T-002 | 如何提供真实 Linux 容器引擎？ | WSL 未启用；Hyper-V provider 不可用；所有静态 T-002 改动与校验工件已安全保留；无 machine/容器 | 启用 WSL 并重启后恢复（推荐）；或提供可用 Docker/Podman Linux engine；否则 AC-023 与 initial finalization 持续阻塞 | 是否允许/已完成 WSL 启用和重启，或提供替代引擎入口 | unresolved | 2026-07-27 UAC `wsl --install --no-distribution` 请求被用户取消，未取得宿主变更授权 |
+| Q-001 | P-004 / P-004-T-002 | 如何提供真实 Linux 容器引擎？ | WSL 已启用并重启；默认 WSL 2；无发行版；所有静态 T-002 改动与校验工件已安全保留；无 machine/容器 | 使用已校验的 Podman WSL machine image 初始化唯一 `ngapd-p004`，再运行真实 Compose 门禁 | WSL 2 宿主前置是否已完成 | resolved | 用户在当前消息明确提供：WSL `2.7.11.0`、内核 `6.18.33.2-2`、默认版本 2、发行版列表为空；2026-07-27T23:05:12+08:00 宿主权限复核一致 |
 
-当前只有 Q-001 未决。已生效决策：
+当前无未决问题。已生效决策：
 
 - 初始运行使用用户明确选择的 `relaxed` 策略。
 - 当前原型数据库实例可丢弃，但任何破坏性重建仍必须解析并确认准确目标。
@@ -317,27 +346,32 @@ P-001、P-002、P-003 阶段验证结论均为 `passed`；initial run 总体验�
 - 已关闭 Outbox 并发缺陷：初版 claim 使用 `executeTakeFirst()` 但未显式 `LIMIT 1`，PostgreSQL 因而锁住全部匹配待处理行，双消费者 barrier 超时；查询补 `LIMIT 1 FOR UPDATE SKIP LOCKED` 后 Database 双消费者和两个真实 Graphile Worker 门禁均通过。
 - 已关闭 P-003 依赖链接恢复偏差：新增 Worker→Database 与 Object Store→Workspace Core workspace link 后，无交互普通安装两次请求重建可再生 `node_modules` 并在工具边界停止；获准联网的同一 pnpm 11.9.0 完成链接重建。lockfile diff 仅保留三个 workspace link 共 12 行，没有第三方升级；八包静态/构建和相关测试通过。
 - 外部环境偏差：额外执行的宽 Workspace CLI 套件复现 5 项固定 `C:\tmp` sandbox/PasswordVault 宿主失败；未修改平台适配器或降低断言。在允许固定测试目录的宿主下，P-003 受影响的 cli/http/mcp/runtime 4 files/20 tests 独立通过。该宽结果不被声称为凭证平台矩阵通过，最终平台门禁仍由 P-004 所有。
-- P-004 规划环境风险：当前宿主没有 Docker/Podman/nerdctl/buildah，标准 Docker Desktop/Podman 路径不存在且 WSL 没有发行版。它不是 report-only finding；T-002 实施必须取得真实 Linux 容器引擎，否则 AC-023 core 阻塞且不得 finalization。
-- P-004-T-002 当前 core blocker：可信 Podman 与 Compose 工件均已取得，产品侧静态实现已完成，但 WSL Windows 可选功能未启用，Hyper-V provider 也不可用。一次明确的 UAC 启用请求被用户取消；因此真实六服务 build/up/health/network/volume/down 无法运行。该阻塞不是 `FND-I-*`、不得按 relaxed 策略 report-only，也不得创建 phase result 或 initial 记录。
+- 已关闭 P-004 宿主前置与 AC-023 发布栈：用户离线启用 WSL 2 后，唯一 Podman machine/Compose smoke 完整通过真实六服务 build/up/health/network/volume/down；专用 project 已精确清理。Docker Hub 长流截断通过逐 blob SHA-256 校验 OCI 预载关闭，未接受截断镜像。
+- 已关闭 clean image build 缺陷：显式 workspace 构建顺序、排除宿主 tsbuildinfo、显式 Caddy 非 root 用户并移除其不再需要的低端口 file capability 后，clean build 与 strict capability 运行均通过。
+- 已关闭 Podman publisher 兼容偏差：`compose port` 对只有 `EXPOSE`、无发布绑定的服务返回 `:0`；Podman `HostConfig.PortBindings={}`、`NetworkSettings.Ports=null`，Compose config 无 ports。smoke 同时断言无非零 PublishedPort/host URL，未降低“无宿主直暴露”门禁。
+- 已关闭 T-003 根静态检查偏差：首次根命令在 format 通过后由 ESLint 捕获四个 type-only/unused import，尚未进入完整 build/typecheck/test。只作静态 import 修正并完成定向 Prettier/ESLint 后，同一精确环境唯一一次完整执行到底的 `pnpm check` 退出 0；该偏差没有产品行为影响，不构成 finding。
+- 已关闭最终数据库查询校准：首次只读概要误将 profile 当作独立表并使用旧租约列名，查询稳定拒绝且没有写入；根据正式 `system_metadata` 与 `workspace_leases.revoked_at` Schema 重新执行后，profile/migration、Graphile jobs、活动租约和 Outbox 摘要均通过。
 
 ## 9. 精确恢复步骤
 
-1. 先由用户启用 WSL（`wsl --install --no-distribution`）并按 Windows 要求重启，或提供一个可用的 Docker/Podman Linux engine；在此之前保持运行 `blocked`。
-2. 恢复 `P-004-T-002` 时先运行 `wsl --status`，确认 Podman `machine list` 仍为空；复核 WSL image `249,426,976` bytes/SHA-256 `e22b4f68…a5b7ec`、Compose SHA-256 `4c864dd7…e1532` 和当前容器配置 diff。
-3. 用已校验 WSL image 初始化并启动唯一 machine `ngapd-p004`，确认 Docker-compatible API；再以精确 Node 24.18.0 和 `COMPOSE_BIN=C:\tmp\docker-compose-v2.40.3-p004.exe` 运行 `pnpm compose:smoke`，修复任何真实 build/up/health/network/volume/down 失败。
-4. smoke 完整通过且清理 project/machine 后写 T-002 post-task 检查点，才允许进入 T-003；随后按 phase plan 运行唯一最终根 check、正式 PostgreSQL/full/兼容/安全验收和 finalization。
+本 initial run 已完成，不存在可恢复的 partial task、活动数据库、Compose project、Podman machine 或任务临时路径。
+
+1. 复核 requirements、roadmap、四份 phase plan/result、change-0 与 effective requirements 的已记录 SHA-256；不得改写已完成工件。
+2. 若只需重新生成派生视图，以 `requirements.md` + 连续 numbered records 为来源重建 `effective-requirements.md`。
+3. 若提出产品、验收或实现变化，使用下一个连续编号创建独立 `execution/change-<N>/` change run，并显式选择 strict/relaxed 策略。
+4. 不得通过修改本 completed state、P-001–P-004 result、initial roadmap 或 change-0 表达后续变化。
 
 ## 10. 最终完成门禁
 
 | 门禁 | 当前状态 |
 | --- | --- |
-| FR-001–FR-028 全部实现并可追踪 | pending |
-| AC-001–AC-026 core 全部有独立通过证据 | pending |
-| AC-027–AC-029 supplemental 通过或形成合格 report-only finding | pending |
-| P-001–P-004 均有 immutable completed result | P-001、P-002、P-003 completed/passed；P-004 pending |
-| Node 24/pnpm 11 根工程、数据库迁移与真实并发门禁通过 | T-001 targeted passed；T-003 final root/full pending |
-| Identity/Workspace/Web/CLI 与原型核心兼容 | P-003 受影响证据 passed；P-004 final pending |
-| Compose 迁移、API/Worker/Web/Gateway/PostgreSQL 健康启动 | blocked：需启用 WSL/提供真实 Linux engine |
-| 安全、租户、秘密、无外部 API/AI/LLM 与单写者门禁通过 | P-003 受影响证据 passed；P-004 final pending |
-| 无未决问题、阻塞、未知文件或不合格 finding | pending |
-| `effective-requirements.md` 与 `change-0.md` 一致生成 | pending |
+| FR-001–FR-028 全部实现并可追踪 | passed |
+| AC-001–AC-026 core 全部有独立通过证据 | passed |
+| AC-027–AC-029 supplemental 通过或形成合格 report-only finding | passed；无 `FND-I-*` |
+| P-001–P-004 均有 immutable completed result | passed；四份 result 均 completed/passed 且哈希已记录 |
+| Node 24/pnpm 11 根工程、数据库迁移与真实并发门禁通过 | passed |
+| Identity/Workspace/Web/CLI 与原型核心兼容 | passed |
+| Compose 迁移、API/Worker/Web/Gateway/PostgreSQL 健康启动 | passed：真实六服务 build/up/health/network/volume/down 与 clean cleanup |
+| 安全、租户、秘密、无外部 API/AI/LLM 与单写者门禁通过 | passed |
+| 无未决问题、阻塞、未知文件或不合格 finding | passed；task-owned 环境已清理 |
+| `effective-requirements.md` 与 `change-0.md` 一致生成 | passed；哈希已记录 |
