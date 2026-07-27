@@ -99,6 +99,7 @@ export type OwnerChangeResult =
         | "completed_task_frozen"
         | "owner_invalid"
         | "forbidden"
+        | "impact_confirmation_stale"
         | "task_version_conflict"
         | "workspace_version_conflict"
         | "workspace_not_active"
@@ -719,6 +720,10 @@ export class TaskLifecycleRepository {
       expectedWorkspaceSyncVersion: number;
       hasUncommittedClientVersion: boolean;
       impactConfirmed: boolean;
+      confirmedTaskIds: readonly string[];
+      expectedAffectedTaskVersions: Readonly<Record<string, number>>;
+      expectedAffectedWorkspaceSyncVersions: Readonly<Record<string, number>>;
+      uncommittedWorkspaceTaskIds: readonly string[];
       requestId: string;
       idempotencyKey: string;
       requestSha256: string;
@@ -790,11 +795,56 @@ export class TaskLifecycleRepository {
           .selectFrom("memberships")
           .select(["id", "project_id", "active"])
           .where("id", "=", input.nextOwnerMembershipId)
+          .forUpdate()
           .executeTakeFirst();
         if (!nextOwner || !nextOwner.active || nextOwner.project_id !== task.project_id) {
           return { ok: false, reason: "owner_invalid" };
         }
-        const facts = await loadLifecycleFacts(transaction, task.project_id);
+        let facts = await loadLifecycleFacts(transaction, task.project_id);
+        const initialImpact = ownerChangeImpact(facts, task.id);
+        if (!initialImpact) {
+          return { ok: false, reason: "forbidden" };
+        }
+        for (const taskId of initialImpact.confirmedTaskIds) {
+          if (taskId === task.id) {
+            continue;
+          }
+          await transaction
+            .selectFrom("tasks")
+            .select("id")
+            .where("id", "=", taskId)
+            .forUpdate()
+            .executeTakeFirstOrThrow();
+        }
+        facts = await loadLifecycleFacts(transaction, task.project_id);
+        const impact = ownerChangeImpact(facts, task.id);
+        if (
+          !impact ||
+          !sameStringSet(impact.ownerAffectedTaskIds, initialImpact.ownerAffectedTaskIds) ||
+          !sameStringSet(impact.confirmedTaskIds, input.confirmedTaskIds)
+        ) {
+          return { ok: false, reason: "impact_confirmation_stale" };
+        }
+        const affectedTasks = impact.ownerAffectedTaskIds.map((taskId) =>
+          facts.tasks.find((candidate) => candidate.id === taskId),
+        );
+        if (affectedTasks.some((candidate) => !candidate)) {
+          return { ok: false, reason: "impact_confirmation_stale" };
+        }
+        if (
+          !hasExactKeys(input.expectedAffectedTaskVersions, impact.ownerAffectedTaskIds) ||
+          affectedTasks.some(
+            (candidate) =>
+              Number(candidate!.version) !== input.expectedAffectedTaskVersions[candidate!.id],
+          )
+        ) {
+          return { ok: false, reason: "task_version_conflict" };
+        }
+        if (
+          affectedTasks.some((candidate) => candidate!.frozen || candidate!.base_status === "done")
+        ) {
+          return { ok: false, reason: "completed_task_frozen" };
+        }
         const currentOwner = facts.ownerByTaskId.get(task.id);
         const authorization =
           actor &&
@@ -802,8 +852,10 @@ export class TaskLifecycleRepository {
           resolveTaskOperationAuthorization(
             {
               serverProjectId: task.project_id,
-              targetProjectIds: [task.project_id],
-              affectedOwnerMembershipIds: [currentOwner],
+              targetProjectIds: impact.ownerAffectedTaskIds.map(() => task.project_id),
+              affectedOwnerMembershipIds: impact.ownerAffectedTaskIds.map((taskId) =>
+                facts.ownerByTaskId.get(taskId)!,
+              ),
               projectOwnerMembershipId: facts.projectOwnerMembershipId,
               projectRootOperation: false,
               adminSessionActive: input.adminModeActive,
@@ -818,62 +870,124 @@ export class TaskLifecycleRepository {
         if (!authorization || !authorization.allowed) {
           return { ok: false, reason: "forbidden" };
         }
-        const workspace = await lockTaskWorkspace(transaction, task.id);
-        if (!workspace) {
+        const workspaces = await transaction
+          .selectFrom("workspaces")
+          .selectAll()
+          .where("scope_type", "=", "task")
+          .where("scope_id", "in", impact.ownerAffectedTaskIds)
+          .orderBy("id")
+          .forUpdate()
+          .execute();
+        if (workspaces.length !== impact.ownerAffectedTaskIds.length) {
           return { ok: false, reason: "workspace_not_active" };
         }
-        const leaseId = await activeLeaseId(transaction, workspace.id);
-        const workspaceDecision = planTaskWorkspaceOwnerChange(
-          {
-            workspaceId: workspace.id,
-            taskId: task.id,
-            lifecycle: workspace.lifecycle === "frozen" ? "frozen" : "active",
-            workCycle: workspace.work_cycle,
-            syncVersion: Number(workspace.sync_version),
-            latestSnapshotSyncVersion: await latestCompletionSnapshotVersion(transaction, task.id),
-            activeLeaseId: leaseId,
-            hasUncommittedClientVersion: input.hasUncommittedClientVersion,
-          },
-          input.expectedWorkspaceSyncVersion,
+        if (
+          !hasExactKeys(input.expectedAffectedWorkspaceSyncVersions, impact.ownerAffectedTaskIds)
+        ) {
+          return { ok: false, reason: "workspace_version_conflict" };
+        }
+        if (
+          input.expectedAffectedWorkspaceSyncVersions[task.id] !==
+          input.expectedWorkspaceSyncVersion
+        ) {
+          return { ok: false, reason: "workspace_version_conflict" };
+        }
+        const workspaceIds = workspaces.map((workspace) => workspace.id);
+        const activeLeases = await transaction
+          .selectFrom("workspace_leases")
+          .select(["id", "workspace_id"])
+          .where("workspace_id", "in", workspaceIds)
+          .where("revoked_at", "is", null)
+          .orderBy("id")
+          .forUpdate()
+          .execute();
+        const activeLeaseByWorkspaceId = new Map(
+          activeLeases.map((lease) => [lease.workspace_id, lease.id]),
         );
-        if (!workspaceDecision.ok) {
-          return { ok: false, reason: workspaceDecision.reason };
+        const uncommittedWorkspaceTaskIds = new Set(input.uncommittedWorkspaceTaskIds);
+        const workspaceByTaskId = new Map(
+          workspaces.map((workspace) => [workspace.scope_id, workspace]),
+        );
+        const workspacePlans = new Map<
+          string,
+          Extract<ReturnType<typeof planTaskWorkspaceOwnerChange>, { ok: true }>["plan"]
+        >();
+        for (const taskId of impact.ownerAffectedTaskIds) {
+          const workspace = workspaceByTaskId.get(taskId)!;
+          const workspaceDecision = planTaskWorkspaceOwnerChange(
+            {
+              workspaceId: workspace.id,
+              taskId,
+              lifecycle: workspace.lifecycle === "frozen" ? "frozen" : "active",
+              workCycle: workspace.work_cycle,
+              syncVersion: Number(workspace.sync_version),
+              latestSnapshotSyncVersion: null,
+              activeLeaseId: activeLeaseByWorkspaceId.get(workspace.id) ?? null,
+              hasUncommittedClientVersion:
+                uncommittedWorkspaceTaskIds.has(taskId) ||
+                (taskId === task.id && input.hasUncommittedClientVersion),
+            },
+            input.expectedAffectedWorkspaceSyncVersions[taskId]!,
+          );
+          if (!workspaceDecision.ok) {
+            return { ok: false, reason: workspaceDecision.reason };
+          }
+          workspacePlans.set(taskId, workspaceDecision.plan);
         }
         await this.failure("after_validation");
-        const nextVersion = Number(task.version) + 1;
-        await transaction
-          .updateTable("tasks")
-          .set({
-            explicit_owner_membership_id: input.nextOwnerMembershipId,
-            version: String(nextVersion),
-            updated_at: input.now,
-          })
-          .where("id", "=", task.id)
-          .execute();
+        const nextVersionByTaskId = new Map<string, number>();
+        for (const affectedTask of affectedTasks) {
+          const nextVersion = Number(affectedTask!.version) + 1;
+          await transaction
+            .updateTable("tasks")
+            .set({
+              ...(affectedTask!.id === task.id
+                ? { explicit_owner_membership_id: input.nextOwnerMembershipId }
+                : {}),
+              version: String(nextVersion),
+              updated_at: input.now,
+            })
+            .where("id", "=", affectedTask!.id)
+            .execute();
+          nextVersionByTaskId.set(affectedTask!.id, nextVersion);
+        }
         await this.failure("after_task");
-        await transaction
-          .insertInto("task_workspace_transition_snapshots")
-          .values({
-            id: randomUUID(),
-            project_id: task.project_id,
-            task_id: task.id,
-            task_version: String(nextVersion),
-            transition_type: "owner_change",
-            owner_membership_id: input.nextOwnerMembershipId,
-            workspace_id: workspace.id,
-            workspace_sync_version: workspace.sync_version,
-            work_cycle: workspace.work_cycle,
-            snapshot: {
-              previousOwnerMembershipId: currentOwner,
-              nextOwnerMembershipId: input.nextOwnerMembershipId,
-              snapshotSyncVersion: workspaceDecision.plan.snapshotSyncVersion,
-            },
-          })
-          .execute();
+        for (const taskId of impact.ownerAffectedTaskIds) {
+          const workspace = workspaceByTaskId.get(taskId)!;
+          const workspacePlan = workspacePlans.get(taskId)!;
+          await transaction
+            .insertInto("task_workspace_transition_snapshots")
+            .values({
+              id: randomUUID(),
+              project_id: task.project_id,
+              task_id: taskId,
+              task_version: String(nextVersionByTaskId.get(taskId)!),
+              transition_type: "owner_change",
+              owner_membership_id: input.nextOwnerMembershipId,
+              workspace_id: workspace.id,
+              workspace_sync_version: workspace.sync_version,
+              work_cycle: workspace.work_cycle,
+              snapshot: {
+                previousOwnerMembershipId: facts.ownerByTaskId.get(taskId),
+                nextOwnerMembershipId: input.nextOwnerMembershipId,
+                snapshotSyncVersion: workspacePlan.snapshotSyncVersion,
+                affectedTaskIds: impact.ownerAffectedTaskIds,
+              },
+            })
+            .execute();
+        }
         await this.failure("after_snapshot");
         await this.failure("after_workspace");
-        await revokeWorkspaceLeases(transaction, workspace.id, input.now, "task_owner_changed");
+        for (const taskId of impact.ownerAffectedTaskIds) {
+          await revokeWorkspaceLeases(
+            transaction,
+            workspaceByTaskId.get(taskId)!.id,
+            input.now,
+            "task_owner_changed",
+          );
+        }
         await this.failure("after_lease");
+        const nextVersion = nextVersionByTaskId.get(task.id)!;
         await writeLifecycleAudit(transaction, {
           actorUserId: actor.userId,
           actorType: input.actorType,
@@ -892,7 +1006,12 @@ export class TaskLifecycleRepository {
           taskId: task.id,
           requestId: input.requestId,
           eventType: "task.owner_changed",
-          payload: { taskId: task.id, taskVersion: nextVersion },
+          payload: {
+            taskId: task.id,
+            taskVersion: nextVersion,
+            affectedTaskIds: impact.ownerAffectedTaskIds,
+            affectedTaskVersions: Object.fromEntries(nextVersionByTaskId),
+          },
         });
         await this.failure("after_outbox");
         const response = {
@@ -1105,6 +1224,71 @@ function mapAuthorizationActor(actor: {
       active: actor.active,
     },
   };
+}
+
+function ownerChangeImpact(
+  facts: LifecycleFacts,
+  targetTaskId: string,
+): { confirmedTaskIds: string[]; ownerAffectedTaskIds: string[] } | undefined {
+  if (!facts.tasks.some((task) => task.id === targetTaskId)) {
+    return undefined;
+  }
+  const childrenByParentId = new Map<string, LifecycleTaskRow[]>();
+  for (const task of facts.tasks) {
+    if (task.parent_task_id === null) {
+      continue;
+    }
+    const children = childrenByParentId.get(task.parent_task_id) ?? [];
+    children.push(task);
+    childrenByParentId.set(task.parent_task_id, children);
+  }
+  for (const children of childrenByParentId.values()) {
+    children.sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  const confirmedTaskIds = [targetTaskId];
+  const ownerAffectedTaskIds = [targetTaskId];
+  const visited = new Set([targetTaskId]);
+  const visit = (parentTaskId: string, inheritsTargetOwner: boolean): boolean => {
+    for (const child of childrenByParentId.get(parentTaskId) ?? []) {
+      if (visited.has(child.id)) {
+        return false;
+      }
+      visited.add(child.id);
+      confirmedTaskIds.push(child.id);
+      const childInheritsTargetOwner =
+        inheritsTargetOwner && child.explicit_owner_membership_id === null;
+      if (childInheritsTargetOwner) {
+        ownerAffectedTaskIds.push(child.id);
+      }
+      if (!visit(child.id, childInheritsTargetOwner)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  return visit(targetTaskId, true)
+    ? {
+        confirmedTaskIds: confirmedTaskIds.sort(),
+        ownerAffectedTaskIds: ownerAffectedTaskIds.sort(),
+      }
+    : undefined;
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return (
+    sortedLeft.length === sortedRight.length &&
+    sortedLeft.every((value, index) => value === sortedRight[index])
+  );
+}
+
+function hasExactKeys(
+  values: Readonly<Record<string, number>>,
+  expectedKeys: readonly string[],
+): boolean {
+  return sameStringSet(Object.keys(values), expectedKeys);
 }
 
 function mapLifecycleNode(

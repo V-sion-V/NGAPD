@@ -149,6 +149,8 @@ export class TaskRepository {
     projectId: string;
     actorMembershipId: string;
     actorType?: "human" | "agent";
+    adminModeActive?: boolean;
+    adminSessionEnteredFromExplicitUserRequest?: boolean;
     requestId?: string;
     idempotencyKey: string;
     requestSha256: string;
@@ -221,6 +223,45 @@ export class TaskRepository {
       );
       if (!ownership.ok) {
         return { ok: false, reason: "task_ownership_invalid" };
+      }
+      if (input.parentTaskId !== null) {
+        const owners = resolveProjectOwners(facts);
+        const actorMembership = facts.memberships.find(
+          (membership) => membership.id === input.actorMembershipId,
+        );
+        const parentOwner = owners.ok ? owners.ownerByTaskId.get(input.parentTaskId) : undefined;
+        if (!actorMembership || !parentOwner) {
+          return { ok: false, reason: "forbidden" };
+        }
+        const authorization = resolveTaskOperationAuthorization(
+          {
+            serverProjectId: input.projectId,
+            targetProjectIds: [input.projectId],
+            affectedOwnerMembershipIds: [parentOwner],
+            projectOwnerMembershipId: facts.project.ownerMembershipId,
+            projectRootOperation: false,
+            adminSessionActive: input.adminModeActive ?? false,
+            actorType: input.actorType ?? "human",
+            adminSessionEnteredFromExplicitUserRequest:
+              input.adminSessionEnteredFromExplicitUserRequest ?? false,
+            impactConfirmationRequired: false,
+            impactConfirmed: true,
+          },
+          {
+            userId: actorMembership.userId,
+            active: actorMembership.userActive,
+            membership: {
+              id: actorMembership.id,
+              userId: actorMembership.userId,
+              projectId: actorMembership.projectId,
+              role: actorMembership.role,
+              active: actorMembership.active,
+            },
+          },
+        );
+        if (!authorization.allowed) {
+          return { ok: false, reason: "forbidden" };
+        }
       }
 
       const parentScope = await findGraphScope(transaction, input.projectId, input.parentTaskId);
@@ -781,7 +822,7 @@ export class TaskRepository {
             owners.ownerByTaskId.get(taskId)!,
           ),
           projectOwnerMembershipId: facts.project.ownerMembershipId,
-          projectRootOperation: input.targetParentTaskId === null,
+          projectRootOperation: false,
           adminSessionActive: input.adminModeActive,
           actorType: input.actorType,
           adminSessionEnteredFromExplicitUserRequest:

@@ -461,6 +461,10 @@ describeWithDatabase("Task and Workspace lifecycle PostgreSQL integration", () =
         expectedWorkspaceSyncVersion: 0,
         hasUncommittedClientVersion: false,
         impactConfirmed: true,
+        confirmedTaskIds: [seeded.task.id],
+        expectedAffectedTaskVersions: { [seeded.task.id]: 1 },
+        expectedAffectedWorkspaceSyncVersions: { [seeded.task.id]: 0 },
+        uncommittedWorkspaceTaskIds: [],
         actorMembershipId: seeded.project.ownerMembership.id,
         actorType: "human",
         adminModeActive: false,
@@ -508,5 +512,216 @@ describeWithDatabase("Task and Workspace lifecycle PostgreSQL integration", () =
       .where("revoked_at", "is", null)
       .executeTakeFirstOrThrow();
     expect(Number(activeLease.count)).toBe(0);
+  });
+
+  it("atomically coordinates inherited descendant Workspaces on Owner change", async () => {
+    const seeded = await seedTask("TROWN", "owner-change-tree");
+    const nextOwner = await addMember(seeded.project.project.id, "owner-change-tree-next");
+    const isolatedOwner = await addMember(seeded.project.project.id, "owner-change-tree-isolated");
+    const inherited = await taskRepository!.createTask({
+      projectId: seeded.project.project.id,
+      actorMembershipId: seeded.project.ownerMembership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      idempotencyKey: "owner-change-tree-inherited",
+      requestSha256: hash("owner-change-tree-inherited"),
+      title: "Inherited descendant",
+      parentTaskId: seeded.task.id,
+      explicitOwnerMembershipId: null,
+    });
+    const isolated = await taskRepository!.createTask({
+      projectId: seeded.project.project.id,
+      actorMembershipId: seeded.project.ownerMembership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      idempotencyKey: "owner-change-tree-isolated",
+      requestSha256: hash("owner-change-tree-isolated"),
+      title: "Explicit-owner descendant",
+      parentTaskId: seeded.task.id,
+      explicitOwnerMembershipId: isolatedOwner.membership.id,
+    });
+    expect(inherited).toMatchObject({ ok: true });
+    expect(isolated).toMatchObject({ ok: true });
+    if (!inherited.ok || !isolated.ok) {
+      throw new Error("expected descendant creation");
+    }
+    await Promise.all([
+      addLease({
+        workspaceId: seeded.workspaceId,
+        userId: seeded.owner.user.id,
+        label: "owner-change-tree-target",
+      }),
+      addLease({
+        workspaceId: inherited.workspaceId,
+        userId: seeded.owner.user.id,
+        label: "owner-change-tree-inherited",
+      }),
+      addLease({
+        workspaceId: isolated.workspaceId,
+        userId: isolatedOwner.user.user.id,
+        label: "owner-change-tree-isolated",
+      }),
+    ]);
+
+    const affectedTaskIds = [seeded.task.id, inherited.task.id];
+    const confirmedTaskIds = [...affectedTaskIds, isolated.task.id].sort();
+    const baseInput = {
+      taskId: seeded.task.id,
+      nextOwnerMembershipId: nextOwner.membership.id,
+      expectedTaskVersion: 1,
+      expectedWorkspaceSyncVersion: 0,
+      hasUncommittedClientVersion: false,
+      impactConfirmed: true,
+      confirmedTaskIds,
+      expectedAffectedTaskVersions: Object.fromEntries(
+        affectedTaskIds.map((taskId) => [taskId, 1]),
+      ),
+      expectedAffectedWorkspaceSyncVersions: Object.fromEntries(
+        affectedTaskIds.map((taskId) => [taskId, 0]),
+      ),
+      actorMembershipId: seeded.project.ownerMembership.id,
+      actorType: "human" as const,
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      requestSha256: hash("owner-change-tree"),
+      now: new Date("2026-07-27T02:50:00.000Z"),
+    };
+    await expect(
+      lifecycle!.changeOwner({
+        ...baseInput,
+        uncommittedWorkspaceTaskIds: [inherited.task.id],
+        requestId: "owner-change-tree-unsynced",
+        idempotencyKey: "owner-change-tree-unsynced",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "workspace_has_uncommitted_client_version" });
+    await expect(
+      lifecycle!.changeOwner({
+        ...baseInput,
+        expectedAffectedWorkspaceSyncVersions: {
+          ...baseInput.expectedAffectedWorkspaceSyncVersions,
+          [inherited.task.id]: 1,
+        },
+        uncommittedWorkspaceTaskIds: [],
+        requestId: "owner-change-tree-stale",
+        idempotencyKey: "owner-change-tree-stale",
+      }),
+    ).resolves.toEqual({ ok: false, reason: "workspace_version_conflict" });
+    const failing = new TaskLifecycleRepository(database!, (point) => {
+      if (point === "after_lease") {
+        throw new Error("injected owner-change rollback");
+      }
+    });
+    await expect(
+      failing.changeOwner({
+        ...baseInput,
+        uncommittedWorkspaceTaskIds: [],
+        requestId: "owner-change-tree-rollback",
+        idempotencyKey: "owner-change-tree-rollback",
+      }),
+    ).rejects.toThrow("injected owner-change rollback");
+    const rollbackTasks = await database!
+      .selectFrom("tasks")
+      .select(["id", "explicit_owner_membership_id", "version"])
+      .where("id", "in", [seeded.task.id, inherited.task.id])
+      .orderBy("id")
+      .execute();
+    expect(rollbackTasks).toEqual(
+      [
+        {
+          id: seeded.task.id,
+          explicit_owner_membership_id: seeded.project.ownerMembership.id,
+          version: "1",
+        },
+        {
+          id: inherited.task.id,
+          explicit_owner_membership_id: null,
+          version: "1",
+        },
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+    await expect(
+      database!
+        .selectFrom("task_workspace_transition_snapshots")
+        .select(({ fn }) => fn.countAll<string>().as("count"))
+        .where("task_id", "in", [seeded.task.id, inherited.task.id])
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({ count: "0" });
+    await expect(
+      database!
+        .selectFrom("workspace_leases")
+        .select(({ fn }) => fn.countAll<string>().as("count"))
+        .where("workspace_id", "in", [seeded.workspaceId, inherited.workspaceId])
+        .where("revoked_at", "is", null)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({ count: "2" });
+    await expect(
+      lifecycle!.changeOwner({
+        ...baseInput,
+        uncommittedWorkspaceTaskIds: [],
+        requestId: "owner-change-tree-success",
+        idempotencyKey: "owner-change-tree-success",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      taskVersion: 2,
+      ownerMembershipId: nextOwner.membership.id,
+    });
+
+    await expect(taskRepository!.resolveEffectiveOwner(inherited.task.id)).resolves.toMatchObject({
+      ok: true,
+      membershipId: nextOwner.membership.id,
+    });
+    const taskRows = await database!
+      .selectFrom("tasks")
+      .select(["id", "explicit_owner_membership_id", "version"])
+      .where("id", "in", [seeded.task.id, inherited.task.id, isolated.task.id])
+      .orderBy("id")
+      .execute();
+    expect(taskRows).toEqual(
+      [
+        {
+          id: seeded.task.id,
+          explicit_owner_membership_id: nextOwner.membership.id,
+          version: "2",
+        },
+        {
+          id: inherited.task.id,
+          explicit_owner_membership_id: null,
+          version: "2",
+        },
+        {
+          id: isolated.task.id,
+          explicit_owner_membership_id: isolatedOwner.membership.id,
+          version: "1",
+        },
+      ].sort((left, right) => left.id.localeCompare(right.id)),
+    );
+    const snapshots = await database!
+      .selectFrom("task_workspace_transition_snapshots")
+      .select(["task_id", "task_version", "owner_membership_id"])
+      .where("transition_type", "=", "owner_change")
+      .where("task_id", "in", [seeded.task.id, inherited.task.id, isolated.task.id])
+      .orderBy("task_id")
+      .execute();
+    expect(snapshots).toEqual(
+      affectedTaskIds
+        .map((taskId) => ({
+          task_id: taskId,
+          task_version: "2",
+          owner_membership_id: nextOwner.membership.id,
+        }))
+        .sort((left, right) => left.task_id.localeCompare(right.task_id)),
+    );
+    const activeLeases = await database!
+      .selectFrom("workspace_leases")
+      .innerJoin("workspaces", "workspaces.id", "workspace_leases.workspace_id")
+      .select(["workspaces.scope_id"])
+      .where("workspaces.scope_type", "=", "task")
+      .where("workspaces.scope_id", "in", [seeded.task.id, inherited.task.id, isolated.task.id])
+      .where("workspace_leases.revoked_at", "is", null)
+      .execute();
+    expect(activeLeases).toEqual([{ scope_id: isolated.task.id }]);
   });
 });

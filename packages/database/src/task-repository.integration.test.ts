@@ -294,6 +294,127 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
     expect(new Set(stored.map((task) => task.taskKey)).size).toBe(21);
   }, 20_000);
 
+  it("reauthorizes child creation against the parent effective Owner", async () => {
+    const { project } = await seedProject("CHILD");
+    const parentOwner = await addMember(project.project.id, "child-parent-owner");
+    const otherMember = await addMember(project.project.id, "child-other-member");
+    const parent = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "child-parent",
+      explicitOwnerMembershipId: parentOwner.membership.id,
+    });
+
+    await expect(
+      repository!.createTask({
+        projectId: project.project.id,
+        actorMembershipId: otherMember.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        idempotencyKey: "child-forbidden-member",
+        requestSha256: requestHash("child-forbidden-member"),
+        title: "Forbidden child",
+        parentTaskId: parent.id,
+        explicitOwnerMembershipId: otherMember.membership.id,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+    await expect(
+      database!
+        .selectFrom("projects")
+        .select("task_sequence")
+        .where("id", "=", project.project.id)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({ task_sequence: "1" });
+
+    await expect(
+      repository!.createTask({
+        projectId: project.project.id,
+        actorMembershipId: parentOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        idempotencyKey: "child-parent-owner",
+        requestSha256: requestHash("child-parent-owner"),
+        title: "Owned child",
+        parentTaskId: parent.id,
+        explicitOwnerMembershipId: null,
+      }),
+    ).resolves.toMatchObject({ ok: true, task: { taskKey: "CHILD-2" } });
+
+    const adminInput = {
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      actorType: "human" as const,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      idempotencyKey: "child-admin",
+      requestSha256: requestHash("child-admin"),
+      title: "Admin child",
+      parentTaskId: parent.id,
+      explicitOwnerMembershipId: project.ownerMembership.id,
+    };
+    await expect(
+      repository!.createTask({ ...adminInput, adminModeActive: false }),
+    ).resolves.toEqual({ ok: false, reason: "forbidden" });
+    await expect(
+      repository!.createTask({ ...adminInput, adminModeActive: true }),
+    ).resolves.toMatchObject({ ok: true, task: { taskKey: "CHILD-3" } });
+  });
+
+  it("does not treat moving another Owner's Task to the virtual root as root control", async () => {
+    const { project } = await seedProject("ROOT");
+    const taskOwner = await addMember(project.project.id, "root-task-owner");
+    const parent = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "root-parent",
+      explicitOwnerMembershipId: taskOwner.membership.id,
+    });
+    const child = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: taskOwner.membership.id,
+      label: "root-child",
+      parentTaskId: parent.id,
+      explicitOwnerMembershipId: taskOwner.membership.id,
+    });
+    const [sourceScope, targetScope, impact] = await Promise.all([
+      database!
+        .selectFrom("sibling_task_graph_scopes")
+        .select(["id", "graph_version"])
+        .where("project_id", "=", project.project.id)
+        .where("parent_task_id", "=", parent.id)
+        .executeTakeFirstOrThrow(),
+      database!
+        .selectFrom("sibling_task_graph_scopes")
+        .select(["id", "graph_version"])
+        .where("project_id", "=", project.project.id)
+        .where("parent_task_id", "is", null)
+        .executeTakeFirstOrThrow(),
+      repository!.previewMoveImpact({ taskId: child.id, targetParentTaskId: null }),
+    ]);
+    expect(impact).toMatchObject({ ok: true });
+    if (!impact.ok) {
+      throw new Error("expected move impact");
+    }
+    const moveInput = {
+      taskId: child.id,
+      targetParentTaskId: null,
+      actorMembershipId: project.ownerMembership.id,
+      actorType: "human" as const,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      expectedTaskVersion: child.version,
+      expectedSourceGraphVersion: Number(sourceScope.graph_version),
+      expectedTargetGraphVersion: Number(targetScope.graph_version),
+      impactConfirmationToken: impact.confirmationToken,
+    };
+    await expect(
+      repository!.moveTask({ ...moveInput, adminModeActive: false }),
+    ).resolves.toMatchObject({ ok: false, reason: "forbidden" });
+    await expect(
+      repository!.moveTask({ ...moveInput, adminModeActive: true }),
+    ).resolves.toMatchObject({ ok: true, taskVersion: 2 });
+  });
+
   it("uses a recursive CTE for depth-20 effective Owner and diagnoses inactivity", async () => {
     const { project } = await seedProject("TREE");
     let parentTaskId: string | null = null;

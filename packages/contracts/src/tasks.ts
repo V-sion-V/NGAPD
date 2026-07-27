@@ -159,6 +159,18 @@ export const ChangeTaskOwnerCommandSchema = Type.Object(
     expectedWorkspaceSyncVersion: Type.Integer({ minimum: 0 }),
     hasUncommittedClientVersion: Type.Boolean(),
     impactConfirmed: Type.Boolean(),
+    confirmedTaskIds: Type.Array(Type.String({ format: "uuid" }), { uniqueItems: true }),
+    expectedAffectedTaskVersions: Type.Record(
+      Type.String({ format: "uuid" }),
+      Type.Integer({ minimum: 1 }),
+    ),
+    expectedAffectedWorkspaceSyncVersions: Type.Record(
+      Type.String({ format: "uuid" }),
+      Type.Integer({ minimum: 0 }),
+    ),
+    uncommittedWorkspaceTaskIds: Type.Array(Type.String({ format: "uuid" }), {
+      uniqueItems: true,
+    }),
   },
   { additionalProperties: false },
 );

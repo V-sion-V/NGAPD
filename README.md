@@ -2,25 +2,23 @@
 
 NGAPD 是一款面向独立游戏团队的 AI 原生敏捷项目管理系统。它将递归任务、用户级/项目级/任务级工作区、Agent 工具调用和过程知识沉淀组织为同一个领域模型。
 
-项目的核心定义是：
+## 产品愿景与目标用户
+
+NGAPD 主要服务于少于 20 人、实际活跃成员通常少于 10 人的独立游戏团队。它希望让策划、程序、美术、音乐与声音等成员围绕同一棵任务树协作，同时让 AI Agent 获得明确、最小且可审计的上下文与操作边界。
+
+核心定义是：
 
 > 任务 = 递归执行单元 + 单一责任边界 + AI 上下文边界 + 可追溯知识节点
 
-当前仓库已完成产品与架构基线以及三个前置原型验证，正在进入 M0“领域基线和工程骨架”阶段。三个原型均已在 schema-v3 工作流中封存为 `completed/passed`，状态与回顾见[前置原型](prototypes/README.md)。正式设计文档如下：
+## 典型使用场景
 
-- [产品需求说明](docs/01-product-requirements.md)
-- [领域模型与任务状态机](docs/02-domain-model.md)
-- [权限与安全模型](docs/03-permission-model.md)
-- [系统概要设计](docs/04-system-architecture.md)
-- [工作区、上下文与 Wiki](docs/05-workspace-context-wiki.md)
-- [Agent 接口与 Skill 设计](docs/06-agent-integration.md)
-- [实施路线与验收策略](docs/07-roadmap-and-validation.md)
-- [决策记录与待定事项](docs/08-decisions-and-open-issues.md)
-- [技术架构决策](docs/09-technical-architecture-decisions.md)
-- [MVP 非功能基线](docs/10-mvp-non-functional-baseline.md)
-- [独立游戏团队逻辑角色模板](docs/11-logical-role-templates.json)
-- [原型准备、验证结果与开发入口](docs/12-prototype-preparation.md)
-- [三个前置原型](prototypes/README.md)
+- 项目负责人建立项目、角色和任务树，将复杂目标递归拆分为责任清晰的执行单元。
+- 团队成员通过同级依赖、关注、评论和状态流转协调跨专业工作。
+- 成员或 Agent 在用户级、项目级或任务级工作区中处理文件，并通过租约和显式冲突选择避免静默覆盖。
+- Agent 读取任务上下文、提出管理操作提案并沉淀完成摘要；涉及任务管理数据的修改由人确认。
+- 团队从完成记录生成可追溯的 Wiki，并在单机自托管环境中备份和恢复项目。
+
+仓库结构、当前里程碑、设计文档索引和开发命令速查见 [AGENTS.md](AGENTS.md)。
 
 ## 已确认的产品边界
 
@@ -55,7 +53,7 @@ NGAPD 是一款面向独立游戏团队的 AI 原生敏捷项目管理系统。�
 6. Wiki 是工作过程的可追溯投影，而不是独立维护的信息孤岛。
 7. 优先构建模块化单体，避免过早拆分微服务。
 
-## 开发入口
+## 开发、测试与部署
 
 仓库要求 `.node-version` 指定的 Node.js 24 和 `package.json` 指定的 pnpm 11。Apple Silicon 是 macOS 首要开发架构；Intel Mac 可使用相同命令，但 Homebrew 会选择对应架构的安装目录。
 
@@ -124,8 +122,23 @@ pnpm dev
 
 每次在新的终端运行全栈命令前，都需要先执行 `nvm use "$(cat .node-version)"`，并通过 `set -a; source .env; set +a` 导入环境变量。若 `createdb` 提示数据库已经存在，可直接继续；不再需要本地数据库时可执行 `brew services stop postgresql@17`。
 
+### 测试与构建
+
+`pnpm check` 是日常完整质量门，会依次检查格式、Lint、生产构建、类型和测试。也可以单独运行：
+
+```zsh
+pnpm format:check
+pnpm lint
+pnpm build
+pnpm typecheck
+pnpm test
+pnpm check
+```
+
+`pnpm ci` 还会校验锁定工具链并重复执行数据库迁移，用于在 PostgreSQL 17 和 CI 数据库环境变量均已就绪时复现 CI 门禁。
+
 ### Linux/Docker 部署
 
-复制并修改 `.env.example` 后，可使用 `docker compose up --build -d` 启动 Caddy、API、Worker 和 PostgreSQL；Compose 会先执行数据库迁移。该 Compose 配置面向 Linux 自托管服务器，macOS 日常开发不要求安装 Docker Desktop。
+复制并修改 `.env.example` 后，先用 `docker compose config` 检查配置，再用 `docker compose up --build -d` 启动 PostgreSQL、迁移任务、API、Worker、Web 和 Caddy 网关。该 Compose 配置面向 Linux 自托管服务器，macOS 日常开发不要求安装 Docker Desktop。
 
-开发命令、目录职责、已知限制、原型封存结果和 M0 开发入口见[原型准备、验证结果与开发入口](docs/12-prototype-preparation.md)。
+完整发布栈冒烟验证使用 `pnpm compose:smoke`，需要可用的 Linux Docker/Compose 环境。部署前应修改数据库密码和 `NGAPD_SITE_ADDRESS`，且不得提交 `.env`。

@@ -1,10 +1,10 @@
 # 原型准备、验证结果与开发入口
 
-文档状态：可执行基线 1.0
+文档状态：可执行基线 1.1
 
 ## 1. 结论
 
-截至 2026-07-26，工作区同步、平铺树状 Task UI 和 Agent 上下文三个前置原型均已完成并封存为 `completed/passed`，没有开放 finding。工程骨架已经覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、领域包、数据库迁移和测试夹具；同步原型还补齐了真实身份/配对、租约、版本、ObjectStore、macOS/APFS/Keychain 与 Windows/NTFS/PasswordVault 闭环。下一项工作是 M0“领域基线和工程骨架”，不再需要补做前置原型或泛化架构设计。
+截至 2026-07-28，工作区同步、平铺树状 Task UI 和 Agent 上下文三个前置原型，以及 M0“领域基线和工程骨架”初始实现均已完成并封存为 `completed/passed`。工程基线覆盖服务端、后台作业、Web、Workspace CLI、共享 Workspace 核心、共享契约、正式领域规则、数据库迁移/Repository、测试夹具、CI 和六服务 Compose 发布栈。当前正在执行 M0 `change-1` 纠正运行，关闭三项授权与 Owner/Workspace 一致性缺口；完成后下一路线图目标是 M1“项目、角色和成员”。
 
 ## 2. 固定技术基线
 
@@ -28,7 +28,7 @@ apps/
   api/          Fastify HTTP、SSE 和 OpenAPI 入口
   worker/       Graphile Worker 后台作业入口
   web/          浏览器端 React 应用
-  workspace-cli/无界面人工诊断与 MCP stdio 入口
+  workspace-cli/配对、物化、租约、同步、冲突处理与只读 MCP stdio 入口
 packages/
   contracts/    运行时 Schema 与跨端契约
   database/     Kysely 数据库连接与迁移
@@ -48,7 +48,7 @@ deploy/         Caddy 与镜像构建文件
 
 ```powershell
 corepack enable
-pnpm install
+pnpm install --frozen-lockfile
 Copy-Item .env.example .env
 
 pnpm format:check
@@ -63,7 +63,7 @@ pnpm dev:workspace -- status
 pnpm dev:workspace -- doctor --json
 ```
 
-`pnpm dev` 并行启动 API、Worker 和 Web；需要可访问的 PostgreSQL 和 `DATABASE_URL`。`pnpm dev:workspace -- <args>` 单独运行 Workspace CLI，不要求数据库或网络。Agent 宿主使用构建后的 `ngapd-workspace serve --stdio`；首版仅提供只读状态和诊断。
+`pnpm dev` 并行启动 API、Worker 和 Web；需要可访问的 PostgreSQL 和 `DATABASE_URL`。Workspace CLI 的 `status`、`doctor` 和只读 MCP stdio 不要求数据库或网络；配对、连接、租约与同步命令还需要相应 API、根目录和凭据配置。Agent 宿主使用构建后的 `ngapd-workspace serve --stdio`，MCP 首版仅提供只读状态和诊断。
 
 ## 5. 单机部署骨架
 
@@ -77,7 +77,7 @@ pnpm dev:workspace -- doctor --json
 
 Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/VPN 部署需要配置可解析主机名，并把内部根证书安全地加入受控客户端信任库，或改用团队已有证书。
 
-持久卷已为 PostgreSQL、内容对象、备份和 Caddy 状态预留。备份/恢复脚本、日志轮转和对象一致性校验属于 M0 后续实现，不应误认为当前 Compose 已经完成生产运维闭环。
+持久卷已为 PostgreSQL、内容对象、备份和 Caddy 状态预留。M0 已验证对象一致性检查点和发布栈，但面向部署的备份/恢复脚本及完整生产运维闭环仍不能由这些预留卷替代。
 
 ## 6. 已验证与环境限制
 
@@ -89,9 +89,9 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 - API、领域规则和测试夹具单元测试。
 - API、Worker、共享包、React Web 与当时的 Electron 三进程生产构建。
 
-该 Electron 骨架已由 Workspace CLI 与共享核心取代；当前统一门禁覆盖 API、Worker、Web、共享包和 CLI。2026-07-25 至 2026-07-26 的三个原型进一步完成了真实 macOS/Windows 主体：Workspace Sync 覆盖 PostgreSQL 17、ObjectStore、APFS/Keychain、NTFS/PasswordVault 和双进程冲突/恢复；Task UI 覆盖 macOS Chromium 与 Windows Chrome；Agent Context 覆盖两平台 Node 24 确定性 core 与性能。当前仍未由这些原型证明的是完整 Linux Docker Compose 启动、Caddy TLS、Linux 卷权限以及面向部署的备份/恢复闭环，这些继续由后续里程碑验证。
+该 Electron 骨架已由 Workspace CLI 与共享核心取代；当前统一门禁覆盖 API、Worker、Web、共享包和 CLI。2026-07-25 至 2026-07-26 的三个原型进一步完成了真实 macOS/Windows 主体：Workspace Sync 覆盖 PostgreSQL 17、ObjectStore、APFS/Keychain、NTFS/PasswordVault 和双进程冲突/恢复；Task UI 覆盖 macOS Chromium 与 Windows Chrome；Agent Context 覆盖两平台 Node 24 确定性 core 与性能。2026-07-28 的 M0 验收又在真实 Linux Docker engine 上验证了六服务 Compose、Caddy 网关、非 root 运行、卷/网络边界、重复迁移和干净关闭。面向部署的备份/恢复闭环仍留待后续里程碑验证。
 
-## 7. 原型封存与 M0 入口
+## 7. 原型封存与里程碑交接
 
 三个原型的最终入口如下：
 
@@ -101,4 +101,4 @@ Caddy 默认使用内部 CA 为 `https://ngapd.local` 提供 TLS；实际内网/
 | Task UI | `completed/passed` | [工作流回顾](requirements/task-ui-prototype/workflow-report.md) |
 | Agent Context | `completed/passed` | [工作流回顾](requirements/agent-context-prototype/workflow-report.md) |
 
-M0 按[实施路线](07-roadmap-and-validation.md#m0领域基线和工程骨架)推进。开始编码前应建立独立的 schema-v3 需求与实施工作流；第一批正式领域范围包括 Project/Task Key、任务树、继承式有效 Owner、同级 DAG、`graph_version`、状态机、完成冻结、重新打开及其领域/API 不变量测试。原型代码和夹具只作为已验证约束与测试输入，不能替代正式领域需求或把 UI/CLI 逻辑提升为服务端权威。
+M0 初始实现已按[实施路线](07-roadmap-and-validation.md#m0领域基线和工程骨架)完成，最终状态和验证证据见 [M0 初始实现记录](requirements/m0-domain-baseline/change-0.md)。当前 [change-1 执行状态](requirements/m0-domain-baseline/execution/change-1/execution-state.md)为 `in_progress/pending`，阶段为 P-001；它完成后，下一目标是 [M1“项目、角色和成员”](07-roadmap-and-validation.md#m1项目角色和成员)，并应在编码前建立独立的 schema-v3 需求与实施工作流。原型代码和夹具只作为已验证约束与测试输入，不能替代正式领域需求或把 UI/CLI 逻辑提升为服务端权威。

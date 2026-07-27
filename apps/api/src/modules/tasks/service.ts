@@ -56,6 +56,9 @@ export class TaskApplicationService {
       projectId: input.projectId,
       actorMembershipId: applicationActor.membershipId!,
       actorType: actor.actorType,
+      adminModeActive: context.adminModeActive,
+      adminSessionEnteredFromExplicitUserRequest:
+        context.adminSessionEnteredFromExplicitUserRequest,
       idempotencyKey: context.idempotencyKey,
       requestSha256: context.requestSha256,
       requestId: context.requestId,
