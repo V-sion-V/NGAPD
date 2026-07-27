@@ -18,10 +18,13 @@
     "build": "tsc -p tsconfig.json",
     "migrate": "tsx src/migrate.ts",
     "migrate:prod": "node dist/migrate.js",
+    "reset:m0": "tsx src/reset.ts",
+    "reset:m0:prod": "node dist/reset.js",
     "test": "vitest run src --fileParallelism=false",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@ngapd/domain": "workspace:*",
     "kysely": "^0.28.8",
     "pg": "^8.16.3"
   },

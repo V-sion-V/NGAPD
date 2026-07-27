@@ -109,6 +109,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@ngapd/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       graphile-worker:
         specifier: ^0.16.6
         version: 0.16.6(typescript@5.9.3)
@@ -139,6 +142,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@ngapd/domain':
+        specifier: workspace:*
+        version: link:../domain
       kysely:
         specifier: ^0.28.8
         version: 0.28.17
@@ -152,7 +158,11 @@ importers:
 
   packages/domain: {}
 
-  packages/object-store: {}
+  packages/object-store:
+    dependencies:
+      '@ngapd/workspace-core':
+        specifier: workspace:*
+        version: link:../workspace-core
 
   packages/test-fixtures:
     dependencies:

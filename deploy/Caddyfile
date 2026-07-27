@@ -1,4 +1,22 @@
-{$NGAPD_SITE_ADDRESS:https://ngapd.local} {
+{
+	admin off
+	http_port {$NGAPD_HTTP_PORT:8080}
+	https_port {$NGAPD_HTTPS_PORT:8443}
+}
+
+:9090 {
+	handle /health/live {
+		respond "ok" 200
+	}
+
+	handle /health/ready {
+		reverse_proxy api:3000
+	}
+
+	respond 404
+}
+
+{$NGAPD_SITE_ADDRESS:https://ngapd.local:8443} {
 	tls internal
 	encode zstd gzip
 
@@ -11,8 +29,6 @@
 	}
 
 	handle {
-		root * /srv
-		try_files {path} /index.html
-		file_server
+		reverse_proxy web:8080
 	}
 }

@@ -42,6 +42,16 @@ export {
   type WorkspaceSyncResult,
   type WorkspaceSyncSecrets,
 } from "./sync.js";
+export {
+  WorkspaceChangeMonitor,
+  normalizeWorkspaceChangeBatch,
+  type RawWorkspaceChange,
+  type RawWorkspaceChangeBatch,
+  type WorkspaceChange,
+  type WorkspacePlatformPorts,
+  type WorkspaceWatcherPort,
+  type WorkspaceWatchSubscription,
+} from "./workspace-platform.js";
 export type {
   ClockPort,
   ConfigurationStatus,

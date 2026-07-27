@@ -8,9 +8,11 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "test": "vitest run src --fileParallelism=false",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@ngapd/database": "workspace:*",
     "graphile-worker": "^0.16.6"
   }
 }

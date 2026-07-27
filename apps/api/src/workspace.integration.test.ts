@@ -479,7 +479,7 @@ describeWithDatabase("workspace sync API integration", () => {
       passwordHash: "argon2id$fixture",
     });
     const project = await foundation.createProjectWithWorkspace({
-      key: `S${run}`,
+      key: run === 1 ? "SYNCA" : "SYNCB",
       name: `Sync run ${run}`,
       ownerUserId: owner.user.id,
     });

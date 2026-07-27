@@ -280,7 +280,7 @@ describeOnSupportedPlatformWithDatabase(integrationTitle, () => {
 
       const foundation = new FoundationRepository(database);
       const project = await foundation.createProjectWithWorkspace({
-        key: `CLI${round}`,
+        key: round === 1 ? "CLIA" : "CLIB",
         name: `CLI round ${round}`,
         ownerUserId: workspace.user_id,
       });

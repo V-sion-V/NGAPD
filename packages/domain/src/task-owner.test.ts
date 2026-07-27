@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveEffectiveTaskOwner } from "./task-owner.js";
+import {
+  resolveCompletionOwnerMaterialization,
+  resolveEffectiveTaskOwner,
+  validateTaskOwnership,
+} from "./task-owner.js";
 
 const memberships = [{ id: "membership-owner", projectId: "project-1", active: true }];
 const tasks = [
@@ -51,5 +55,41 @@ describe("resolveEffectiveTaskOwner", () => {
         memberships,
       ),
     ).toEqual({ ok: false, reason: "ownership_cycle" });
+  });
+
+  it("requires active explicit owners at the project root", () => {
+    expect(validateTaskOwnership(tasks, memberships)).toEqual({ ok: true });
+    expect(
+      validateTaskOwnership(
+        [
+          {
+            id: "root",
+            projectId: "project-1",
+            parentTaskId: null,
+            explicitOwnerMembershipId: null,
+          },
+        ],
+        memberships,
+      ),
+    ).toEqual({
+      ok: false,
+      taskId: "root",
+      reason: "top_level_owner_required",
+    });
+  });
+
+  it("makes inherited completion ownership materialization explicit", () => {
+    expect(resolveCompletionOwnerMaterialization("child", tasks, memberships)).toEqual({
+      ok: true,
+      membershipId: "membership-owner",
+      sourceTaskId: "root",
+      shouldMaterialize: true,
+    });
+    expect(resolveCompletionOwnerMaterialization("root", tasks, memberships)).toEqual({
+      ok: true,
+      membershipId: "membership-owner",
+      sourceTaskId: "root",
+      shouldMaterialize: false,
+    });
   });
 });

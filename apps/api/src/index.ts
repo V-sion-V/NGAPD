@@ -1,4 +1,4 @@
-import { createDatabase, pingDatabase } from "@ngapd/database";
+import { createDatabase, inspectDatabaseSchema } from "@ngapd/database";
 import { LocalObjectStore } from "@ngapd/object-store";
 
 import { buildApp } from "./app.js";
@@ -23,7 +23,7 @@ const database = createDatabase(connectionString);
 const objectStore = new LocalObjectStore(objectStorePath);
 const app = await buildApp({
   database,
-  databaseCheck: () => pingDatabase(database),
+  databaseCheck: async () => (await inspectDatabaseSchema(database)).status === "ready",
   logger: true,
   objectStore,
   publicOrigin: process.env.WEB_ORIGIN ?? process.env.NGAPD_SITE_ADDRESS ?? "https://ngapd.local",

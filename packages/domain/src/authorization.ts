@@ -33,6 +33,27 @@ export type AuthorizationReason =
   | "project_write_requires_owner_or_admin"
   | "task_write_requires_effective_owner";
 
+export type TaskOperationAuthorizationReason =
+  | AuthorizationReason
+  | "tenant_scope_mismatch"
+  | "task_owner_required"
+  | "admin_mode_required"
+  | "agent_admin_mode_requires_explicit_request"
+  | "impact_confirmation_required";
+
+export interface TaskOperationAuthorizationContext {
+  serverProjectId: string;
+  targetProjectIds: readonly string[];
+  affectedOwnerMembershipIds: readonly string[];
+  projectOwnerMembershipId: string;
+  projectRootOperation: boolean;
+  adminSessionActive: boolean;
+  actorType: "human" | "agent";
+  adminSessionEnteredFromExplicitUserRequest: boolean;
+  impactConfirmationRequired: boolean;
+  impactConfirmed: boolean;
+}
+
 export interface AuthorizationDecision {
   allowed: boolean;
   reason: AuthorizationReason;
@@ -66,9 +87,7 @@ export function resolveWorkspaceReadAccess(
     return deny("account_inactive");
   }
   if (context.scopeType === "user") {
-    return context.scopeOwnerUserId === actor.userId
-      ? { allowed: true, reason: "allowed" }
-      : deny("not_scope_owner");
+    return { allowed: true, reason: "allowed" };
   }
 
   const membership = activeProjectMembership(context, actor);
@@ -80,8 +99,13 @@ export function resolveWorkspaceWriteEligibility(
   actor: AuthorizationActor,
 ): AuthorizationDecision {
   const read = resolveWorkspaceReadAccess(context, actor);
-  if (!read.allowed || context.scopeType === "user") {
+  if (!read.allowed) {
     return read;
+  }
+  if (context.scopeType === "user") {
+    return context.scopeOwnerUserId === actor.userId
+      ? { allowed: true, reason: "allowed" }
+      : deny("not_scope_owner");
   }
 
   const membership = actor.membership;
@@ -98,4 +122,65 @@ export function resolveWorkspaceWriteEligibility(
   return context.effectiveTaskOwnerMembershipId === membership.id
     ? { allowed: true, reason: "allowed" }
     : deny("task_write_requires_effective_owner");
+}
+
+export function resolveAgentWorkspaceReadIntent(input: {
+  actorUserId: string;
+  scopeOwnerUserId: string;
+  explicitUserInstructionForScope: boolean;
+}): AuthorizationDecision {
+  return input.scopeOwnerUserId === input.actorUserId || input.explicitUserInstructionForScope
+    ? { allowed: true, reason: "allowed" }
+    : deny("not_scope_owner");
+}
+
+export function resolveTaskOperationAuthorization(
+  context: TaskOperationAuthorizationContext,
+  actor: AuthorizationActor,
+):
+  | { allowed: true; reason: "allowed" }
+  | {
+      allowed: false;
+      reason: Exclude<TaskOperationAuthorizationReason, "allowed">;
+    } {
+  if (!actor.active) {
+    return { allowed: false, reason: "account_inactive" };
+  }
+  const membership = actor.membership;
+  if (!membership) {
+    return { allowed: false, reason: "membership_required" };
+  }
+  if (!membership.active) {
+    return { allowed: false, reason: "membership_inactive" };
+  }
+  if (
+    membership.projectId !== context.serverProjectId ||
+    context.targetProjectIds.some((projectId) => projectId !== context.serverProjectId)
+  ) {
+    return { allowed: false, reason: "tenant_scope_mismatch" };
+  }
+
+  const ownsEveryAffectedTask = context.affectedOwnerMembershipIds.every(
+    (ownerMembershipId) => ownerMembershipId === membership.id,
+  );
+  const controlsProjectRoot =
+    context.projectRootOperation && context.projectOwnerMembershipId === membership.id;
+  const requiresAdmin = !ownsEveryAffectedTask && !controlsProjectRoot;
+  if (requiresAdmin && !context.adminSessionActive) {
+    return { allowed: false, reason: "admin_mode_required" };
+  }
+  if (
+    requiresAdmin &&
+    context.actorType === "agent" &&
+    !context.adminSessionEnteredFromExplicitUserRequest
+  ) {
+    return {
+      allowed: false,
+      reason: "agent_admin_mode_requires_explicit_request",
+    };
+  }
+  if (context.impactConfirmationRequired && !context.impactConfirmed) {
+    return { allowed: false, reason: "impact_confirmation_required" };
+  }
+  return { allowed: true, reason: "allowed" };
 }

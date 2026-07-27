@@ -29,6 +29,9 @@ export interface CreateTaskInput {
   id?: string;
   workspaceId?: string;
   projectId: string;
+  /**
+   * @deprecated Task keys are allocated from the immutable Project Key and project sequence.
+   */
   key: string;
   title: string;
   parentTaskId: string | null;
@@ -46,6 +49,12 @@ export interface AuditEventInput {
   reasonCode: string;
   beforeVersion?: number | null;
   afterVersion?: number | null;
+  actorType?: "human" | "agent" | "system";
+  projectId?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  taskVersionBefore?: number | null;
+  taskVersionAfter?: number | null;
   metadata?: Record<string, string | number | boolean | null>;
 }
 
@@ -76,6 +85,7 @@ export class FoundationRepository {
       const projectId = input.id ?? randomUUID();
       const ownerMembershipId = input.ownerMembershipId ?? randomUUID();
       const workspaceId = input.workspaceId ?? randomUUID();
+      const rootGraphScopeId = randomUUID();
       await sql`set constraints all deferred`.execute(transaction);
       const project = await transaction
         .insertInto("projects")
@@ -97,6 +107,14 @@ export class FoundationRepository {
         })
         .returning(["id", "project_id", "user_id", "role", "active"])
         .executeTakeFirstOrThrow();
+      await transaction
+        .insertInto("sibling_task_graph_scopes")
+        .values({
+          id: rootGraphScopeId,
+          project_id: projectId,
+          parent_task_id: null,
+        })
+        .execute();
       const workspace = await insertWorkspace(transaction, workspaceId, "project", projectId);
       return { project, ownerMembership, workspace };
     });
@@ -125,26 +143,58 @@ export class FoundationRepository {
       await validateTaskReferences(transaction, input);
       const taskId = input.id ?? randomUUID();
       const workspaceId = input.workspaceId ?? randomUUID();
+      const childGraphScopeId = randomUUID();
+      const project = await transaction
+        .updateTable("projects")
+        .set({
+          task_sequence: sql`task_sequence + 1`,
+          updated_at: sql`now()`,
+        })
+        .where("id", "=", input.projectId)
+        .returning(["project_key", "task_sequence"])
+        .executeTakeFirstOrThrow();
+      let parentGraphScopeQuery = transaction
+        .selectFrom("sibling_task_graph_scopes")
+        .select("id")
+        .where("project_id", "=", input.projectId);
+      parentGraphScopeQuery =
+        input.parentTaskId === null
+          ? parentGraphScopeQuery.where("parent_task_id", "is", null)
+          : parentGraphScopeQuery.where("parent_task_id", "=", input.parentTaskId);
+      const parentGraphScope = await parentGraphScopeQuery.executeTakeFirstOrThrow();
+      const taskKey = `${project.project_key}-${project.task_sequence}`;
       const task = await transaction
         .insertInto("tasks")
         .values({
           id: taskId,
           project_id: input.projectId,
-          task_key: input.key,
+          task_sequence: project.task_sequence,
+          task_key: taskKey,
           title: input.title,
-          status: "open",
+          base_status: "not_started",
           parent_task_id: input.parentTaskId,
+          parent_graph_scope_id: parentGraphScope.id,
           explicit_owner_membership_id: input.explicitOwnerMembershipId,
         })
         .returning([
           "id",
           "project_id",
+          "task_sequence",
           "task_key",
           "title",
+          "base_status",
           "parent_task_id",
           "explicit_owner_membership_id",
         ])
         .executeTakeFirstOrThrow();
+      await transaction
+        .insertInto("sibling_task_graph_scopes")
+        .values({
+          id: childGraphScopeId,
+          project_id: input.projectId,
+          parent_task_id: taskId,
+        })
+        .execute();
       const workspace = await insertWorkspace(transaction, workspaceId, "task", taskId);
       return { task, workspace };
     });
@@ -237,6 +287,18 @@ export async function writeAudit(
       action: input.action,
       result: input.result,
       reason_code: input.reasonCode,
+      actor_type: input.actorType ?? "human",
+      project_id: input.projectId ?? null,
+      target_type: input.targetType ?? null,
+      target_id: input.targetId ?? null,
+      task_version_before:
+        input.taskVersionBefore === undefined || input.taskVersionBefore === null
+          ? null
+          : String(input.taskVersionBefore),
+      task_version_after:
+        input.taskVersionAfter === undefined || input.taskVersionAfter === null
+          ? null
+          : String(input.taskVersionAfter),
       metadata: input.metadata ?? {},
       before_version:
         input.beforeVersion === undefined || input.beforeVersion === null
@@ -247,5 +309,8 @@ export async function writeAudit(
           ? null
           : String(input.afterVersion),
     })
+    .onConflict((conflict) =>
+      conflict.columns(["request_id", "action", "result", "target_type", "target_id"]).doNothing(),
+    )
     .execute();
 }

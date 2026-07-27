@@ -12,7 +12,7 @@ export interface WorkspaceRecord {
   id: string;
   scopeType: "user" | "project" | "task";
   scopeId: string;
-  lifecycle: "active" | "archived" | "deleted";
+  lifecycle: "active" | "frozen" | "archived" | "deleted";
   workCycle: number;
   syncVersion: number;
 }
@@ -822,7 +822,7 @@ function mapWorkspace(workspace: {
   id: string;
   scope_type: "user" | "project" | "task";
   scope_id: string;
-  lifecycle: "active" | "archived" | "deleted";
+  lifecycle: "active" | "frozen" | "archived" | "deleted";
   work_cycle: number;
   sync_version: string;
 }): WorkspaceRecord {

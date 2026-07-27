@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-database:
+    name: Quality and PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17.10-alpine
+        env:
+          POSTGRES_DB: ngapd_ci
+          POSTGRES_USER: ngapd
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ngapd -d ngapd_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://ngapd@127.0.0.1:5432/ngapd_ci
+      DATABASE_TEST_URL: postgresql://ngapd@127.0.0.1:5432/ngapd_ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use locked Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          check-latest: false
+
+      - name: Activate locked pnpm
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run required repository and database gates
+        run: pnpm ci
+
+  compose-release:
+    name: Compose release smoke
+    needs: quality-and-database
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use locked Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          check-latest: false
+
+      - name: Build and verify the six-service release stack
+        run: node scripts/compose/smoke.mjs

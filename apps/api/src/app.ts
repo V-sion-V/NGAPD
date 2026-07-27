@@ -1,11 +1,13 @@
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import { ApiErrorSchema, HealthStatusSchema, type HealthStatus } from "@ngapd/contracts";
-import { WorkspaceRepository, type Database } from "@ngapd/database";
+import { EventRepository, WorkspaceRepository, type Database } from "@ngapd/database";
 import type { ObjectStore } from "@ngapd/object-store";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { ApplicationError } from "./modules/identity/errors.js";
+import { registerEventRoutes } from "./modules/events/routes.js";
+import { EventService } from "./modules/events/service.js";
 import { registerIdentityRoutes } from "./modules/identity/routes.js";
 import { IdentityService } from "./modules/identity/service.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
@@ -18,6 +20,8 @@ export interface AppOptions {
   publicOrigin?: string;
   now?: () => Date;
   objectStore?: ObjectStore;
+  eventPollIntervalMs?: number;
+  eventStreamDurationMs?: number;
 }
 
 const serviceVersion = "0.0.0";
@@ -109,6 +113,17 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
       service: identity,
       publicOrigin: options.publicOrigin ?? "https://ngapd.local",
       now: options.now ?? (() => new Date()),
+    });
+    await registerEventRoutes(app, {
+      identity,
+      events: new EventService(new EventRepository(options.database)),
+      now: options.now ?? (() => new Date()),
+      ...(options.eventPollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: options.eventPollIntervalMs }),
+      ...(options.eventStreamDurationMs === undefined
+        ? {}
+        : { streamDurationMs: options.eventStreamDurationMs }),
     });
     if (options.objectStore) {
       await registerWorkspaceRoutes(app, {

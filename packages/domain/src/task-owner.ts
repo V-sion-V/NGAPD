@@ -25,6 +25,27 @@ export type TaskOwnerResolution =
         | "owner_project_mismatch";
     };
 
+export type TaskOwnershipValidation =
+  | { ok: true }
+  | {
+      ok: false;
+      taskId: string;
+      reason:
+        | "duplicate_task"
+        | "duplicate_membership"
+        | "top_level_owner_required"
+        | Exclude<TaskOwnerResolution, { ok: true }>["reason"];
+    };
+
+export type CompletionOwnerMaterialization =
+  | {
+      ok: true;
+      membershipId: string;
+      sourceTaskId: string;
+      shouldMaterialize: boolean;
+    }
+  | Exclude<TaskOwnerResolution, { ok: true }>;
+
 export function resolveEffectiveTaskOwner(
   taskId: string,
   tasks: readonly TaskOwnershipNode[],
@@ -77,4 +98,61 @@ export function resolveEffectiveTaskOwner(
   }
 
   return { ok: false, reason: "owner_missing" };
+}
+
+export function validateTaskOwnership(
+  tasks: readonly TaskOwnershipNode[],
+  memberships: readonly OwnershipMembership[],
+): TaskOwnershipValidation {
+  const taskIds = new Set<string>();
+  for (const task of tasks) {
+    if (taskIds.has(task.id)) {
+      return { ok: false, taskId: task.id, reason: "duplicate_task" };
+    }
+    taskIds.add(task.id);
+  }
+
+  const membershipIds = new Set<string>();
+  for (const membership of memberships) {
+    if (membershipIds.has(membership.id)) {
+      const relatedTask = [...tasks]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .find((task) => task.explicitOwnerMembershipId === membership.id);
+      return {
+        ok: false,
+        taskId: relatedTask?.id ?? "",
+        reason: "duplicate_membership",
+      };
+    }
+    membershipIds.add(membership.id);
+  }
+
+  for (const task of [...tasks].sort((left, right) => left.id.localeCompare(right.id))) {
+    if (task.parentTaskId === null && task.explicitOwnerMembershipId === null) {
+      return { ok: false, taskId: task.id, reason: "top_level_owner_required" };
+    }
+    const resolution = resolveEffectiveTaskOwner(task.id, tasks, memberships);
+    if (!resolution.ok) {
+      return { ok: false, taskId: task.id, reason: resolution.reason };
+    }
+  }
+  return { ok: true };
+}
+
+export function resolveCompletionOwnerMaterialization(
+  taskId: string,
+  tasks: readonly TaskOwnershipNode[],
+  memberships: readonly OwnershipMembership[],
+): CompletionOwnerMaterialization {
+  const task = tasks.find((candidate) => candidate.id === taskId);
+  const resolution = resolveEffectiveTaskOwner(taskId, tasks, memberships);
+  if (!resolution.ok) {
+    return resolution;
+  }
+  return {
+    ok: true,
+    membershipId: resolution.membershipId,
+    sourceTaskId: resolution.sourceTaskId,
+    shouldMaterialize: task?.explicitOwnerMembershipId === null,
+  };
 }

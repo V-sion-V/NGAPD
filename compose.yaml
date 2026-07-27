@@ -1,8 +1,17 @@
 name: ngapd
 
+x-hardened-service: &hardened-service
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17.10-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ngapd}
@@ -13,10 +22,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 5s
+    networks:
+      - backend
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
   migrate:
+    <<: *hardened-service
     build:
       context: .
       target: api
@@ -27,8 +40,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - backend
 
   api:
+    <<: *hardened-service
     build:
       context: .
       target: api
@@ -37,7 +53,7 @@ services:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: 3000
-      WEB_ORIGIN: ${NGAPD_SITE_ADDRESS:-https://ngapd.local}
+      WEB_ORIGIN: ${NGAPD_SITE_ADDRESS:-https://ngapd.local:8443}
       DATABASE_URL: postgres://${POSTGRES_USER:-ngapd}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ngapd}
       OBJECT_STORE_PATH: /var/lib/ngapd/objects
       BACKUP_PATH: /var/lib/ngapd/backups
@@ -52,14 +68,18 @@ services:
           "-e",
           "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
         ]
-      interval: 10s
+      interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 20
+      start_period: 5s
+    networks:
+      - backend
     volumes:
       - object-data:/var/lib/ngapd/objects
       - backup-data:/var/lib/ngapd/backups
 
   worker:
+    <<: *hardened-service
     build:
       context: .
       target: worker
@@ -67,27 +87,77 @@ services:
     environment:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-ngapd}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ngapd}
+      WORKER_HEALTH_HOST: 0.0.0.0
+      WORKER_HEALTH_PORT: 3001
     depends_on:
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - backend
+
+  web:
+    <<: *hardened-service
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - backend
 
   gateway:
+    <<: *hardened-service
     build:
       context: .
       dockerfile: deploy/Caddy.Dockerfile
     restart: unless-stopped
     environment:
-      NGAPD_SITE_ADDRESS: ${NGAPD_SITE_ADDRESS:-https://ngapd.local}
+      NGAPD_SITE_ADDRESS: ${NGAPD_SITE_ADDRESS:-https://ngapd.local:8443}
+      NGAPD_HTTP_PORT: ${NGAPD_HTTP_PORT:-8080}
+      NGAPD_HTTPS_PORT: ${NGAPD_HTTPS_PORT:-8443}
     depends_on:
       api:
         condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    networks:
+      - backend
+      - edge
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${NGAPD_HTTP_PORT:-8080}:${NGAPD_HTTP_PORT:-8080}"
+      - "${NGAPD_HTTPS_PORT:-8443}:${NGAPD_HTTPS_PORT:-8443}"
+      - "${NGAPD_HTTPS_PORT:-8443}:${NGAPD_HTTPS_PORT:-8443}/udp"
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+
+networks:
+  backend:
+    internal: true
+  edge:
 
 volumes:
   postgres-data:
