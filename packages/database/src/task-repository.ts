@@ -25,6 +25,7 @@ import {
 import { sql, type Kysely, type Transaction } from "kysely";
 
 import { writeAudit } from "./foundation-repository.js";
+import { lockMemberships } from "./m1-repository-support.js";
 import type { DatabaseSchema } from "./types.js";
 
 const EMPTY_MANIFEST_HASH = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945";
@@ -55,8 +56,8 @@ interface ProjectFacts {
     id: string;
     projectId: string;
     userId: string;
-    role: "admin" | "member";
-    active: boolean;
+    permissionLevel: "admin" | "member";
+    status: "pending" | "active" | "removed";
     userActive: boolean;
   }>;
 }
@@ -82,8 +83,8 @@ export interface TaskApplicationActor {
   projectId: string;
   projectOwnerMembershipId: string;
   membershipId: string | null;
-  membershipRole: "admin" | "member" | null;
-  membershipActive: boolean;
+  membershipPermissionLevel: "admin" | "member" | null;
+  membershipStatus: "pending" | "active" | "removed" | null;
 }
 
 export type CreateFormalTaskResult =
@@ -195,13 +196,24 @@ export class TaskRepository {
       if (!project) {
         return { ok: false, reason: "project_not_found" };
       }
-      const actor = await transaction
-        .selectFrom("memberships")
-        .select(["id", "project_id", "active"])
-        .where("id", "=", input.actorMembershipId)
-        .executeTakeFirst();
-      if (!actor || !actor.active || actor.project_id !== input.projectId) {
+      const lockedMemberships = await lockMemberships(transaction, input.projectId, [
+        input.actorMembershipId,
+        ...(input.explicitOwnerMembershipId ? [input.explicitOwnerMembershipId] : []),
+      ]);
+      const actor = lockedMemberships.find(
+        (membership) => membership.id === input.actorMembershipId,
+      );
+      if (!actor || actor.status !== "active" || actor.project_id !== input.projectId) {
         return { ok: false, reason: "forbidden" };
+      }
+      if (
+        input.explicitOwnerMembershipId &&
+        !lockedMemberships.some(
+          (membership) =>
+            membership.id === input.explicitOwnerMembershipId && membership.status === "active",
+        )
+      ) {
+        return { ok: false, reason: "task_ownership_invalid" };
       }
 
       const replay = await transaction
@@ -281,8 +293,8 @@ export class TaskRepository {
               id: actorMembership.id,
               userId: actorMembership.userId,
               projectId: actorMembership.projectId,
-              role: actorMembership.role,
-              active: actorMembership.active,
+              permissionLevel: actorMembership.permissionLevel,
+              status: actorMembership.status,
             },
           },
         );
@@ -392,7 +404,7 @@ export class TaskRepository {
     }
     const membership = await this.database
       .selectFrom("memberships")
-      .select(["id", "role", "active"])
+      .select(["id", "permission_level", "status"])
       .where("project_id", "=", projectId)
       .where("user_id", "=", userId)
       .executeTakeFirst();
@@ -402,8 +414,8 @@ export class TaskRepository {
       projectId: project.id,
       projectOwnerMembershipId: project.owner_membership_id,
       membershipId: membership?.id ?? null,
-      membershipRole: membership?.role ?? null,
-      membershipActive: membership?.active ?? false,
+      membershipPermissionLevel: membership?.permission_level ?? null,
+      membershipStatus: membership?.status ?? null,
     };
   }
 
@@ -458,7 +470,7 @@ export class TaskRepository {
     const projectId = chain.rows[0]!.project_id;
     const memberships = await this.database
       .selectFrom("memberships")
-      .select(["id", "project_id", "active"])
+      .select(["id", "project_id", "status"])
       .where("project_id", "=", projectId)
       .execute();
     return resolveEffectiveTaskOwner(
@@ -506,7 +518,7 @@ export class TaskRepository {
       const actor = facts.memberships.find(
         (membership) => membership.id === input.actorMembershipId,
       );
-      if (!actor?.active) {
+      if (actor?.status !== "active") {
         return { ok: false, reason: "forbidden" };
       }
       const snapshot = await loadGraphDomainSnapshot(transaction, facts, scopeId);
@@ -864,8 +876,8 @@ export class TaskRepository {
             id: actorMembership.id,
             userId: actorMembership.userId,
             projectId: actorMembership.projectId,
-            role: actorMembership.role,
-            active: actorMembership.active,
+            permissionLevel: actorMembership.permissionLevel,
+            status: actorMembership.status,
           },
         },
       );
@@ -1028,8 +1040,8 @@ export class TaskRepository {
             id: actorMembership.id,
             userId: actorMembership.userId,
             projectId: actorMembership.projectId,
-            role: actorMembership.role,
-            active: actorMembership.active,
+            permissionLevel: actorMembership.permissionLevel,
+            status: actorMembership.status,
           },
         },
       );
@@ -1154,8 +1166,8 @@ export class TaskRepository {
             id: actorMembership.id,
             userId: actorMembership.userId,
             projectId: actorMembership.projectId,
-            role: actorMembership.role,
-            active: actorMembership.active,
+            permissionLevel: actorMembership.permissionLevel,
+            status: actorMembership.status,
           },
         },
       );
@@ -1254,6 +1266,8 @@ async function writeTaskSuccessRecords(
     .values({
       id: randomUUID(),
       project_id: input.projectId,
+      audience_type: "project",
+      audience_id: input.projectId,
       aggregate_type: "task",
       aggregate_id: input.targetId,
       event_type: input.eventType,
@@ -1298,8 +1312,8 @@ async function loadProjectFacts(
       "memberships.id",
       "memberships.project_id",
       "memberships.user_id",
-      "memberships.role",
-      "memberships.active",
+      "memberships.permission_level",
+      "memberships.status",
       "users.active as user_active",
     ])
     .where("memberships.project_id", "=", projectId)
@@ -1317,8 +1331,8 @@ async function loadProjectFacts(
       id: membership.id,
       projectId: membership.project_id,
       userId: membership.user_id,
-      role: membership.role,
-      active: membership.active,
+      permissionLevel: membership.permission_level,
+      status: membership.status,
       userActive: membership.user_active,
     })),
   };
@@ -1604,12 +1618,12 @@ function mapOwnershipMembership(membership: {
   id: string;
   projectId?: string;
   project_id?: string;
-  active: boolean;
+  status: "pending" | "active" | "removed";
 }): OwnershipMembership {
   return {
     id: membership.id,
     projectId: membership.projectId ?? membership.project_id!,
-    active: membership.active,
+    status: membership.status,
   };
 }
 

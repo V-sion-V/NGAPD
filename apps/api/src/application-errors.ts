@@ -7,6 +7,273 @@ interface ErrorDescriptor {
   recovery: string;
 }
 
+const M1_ERROR_DESCRIPTORS = {
+  user_not_found: {
+    statusCode: 404,
+    code: "USER_PROFILE_NOT_FOUND",
+    message: "用户资料不存在",
+    recovery: "请重新登录后重试",
+  },
+  user_inactive: {
+    statusCode: 403,
+    code: "ACCOUNT_INACTIVE",
+    message: "账号当前不可用",
+    recovery: "请联系管理员恢复账号",
+  },
+  version_conflict: {
+    statusCode: 409,
+    code: "USER_PROFILE_VERSION_CONFLICT",
+    message: "用户资料版本已经变化",
+    recovery: "请刷新资料和版本后重试",
+  },
+  template_not_found: {
+    statusCode: 422,
+    code: "ROLE_TEMPLATE_NOT_FOUND",
+    message: "系统角色模板不存在",
+    recovery: "请刷新系统角色模板后重试",
+  },
+  account_inactive: {
+    statusCode: 403,
+    code: "ACCOUNT_INACTIVE",
+    message: "账号当前不可用",
+    recovery: "请重新登录或联系管理员恢复账号",
+  },
+  project_not_found: {
+    statusCode: 404,
+    code: "PROJECT_NOT_FOUND",
+    message: "项目不存在或当前用户无权访问",
+    recovery: "请刷新项目列表或核对精确 Project Key",
+  },
+  project_key_taken: {
+    statusCode: 409,
+    code: "PROJECT_KEY_TAKEN",
+    message: "Project Key 已被使用",
+    recovery: "请使用其他 Project Key",
+  },
+  project_archived: {
+    statusCode: 409,
+    code: "PROJECT_ARCHIVED",
+    message: "项目已归档",
+    recovery: "请由 Project Owner 先解除归档",
+  },
+  membership_required: {
+    statusCode: 403,
+    code: "MEMBERSHIP_NOT_FOUND",
+    message: "当前用户不是该项目成员",
+    recovery: "请先申请加入项目",
+  },
+  membership_not_found: {
+    statusCode: 404,
+    code: "MEMBERSHIP_NOT_FOUND",
+    message: "项目成员不存在",
+    recovery: "请刷新成员列表后重试",
+  },
+  membership_inactive: {
+    statusCode: 403,
+    code: "MEMBERSHIP_NOT_ACTIVE",
+    message: "项目成员当前不是活动状态",
+    recovery: "请完成加入审批或重新申请加入",
+  },
+  membership_project_mismatch: {
+    statusCode: 403,
+    code: "FORBIDDEN",
+    message: "成员不属于目标项目",
+    recovery: "请刷新项目与成员数据",
+  },
+  membership_already_active: {
+    statusCode: 409,
+    code: "MEMBERSHIP_ALREADY_ACTIVE",
+    message: "当前用户已经是活动成员",
+    recovery: "请直接打开项目",
+  },
+  join_request_already_pending: {
+    statusCode: 409,
+    code: "JOIN_REQUEST_ALREADY_PENDING",
+    message: "已有待处理加入申请",
+    recovery: "请等待 Project Owner 处理当前申请",
+  },
+  join_request_not_found: {
+    statusCode: 404,
+    code: "JOIN_REQUEST_NOT_FOUND",
+    message: "加入申请不存在",
+    recovery: "请刷新申请列表后重试",
+  },
+  join_request_not_pending: {
+    statusCode: 409,
+    code: "JOIN_REQUEST_STALE",
+    message: "加入申请已经处理或失效",
+    recovery: "请刷新申请与成员状态",
+  },
+  ownership_transfer_not_found: {
+    statusCode: 404,
+    code: "OWNERSHIP_TRANSFER_NOT_FOUND",
+    message: "所有权转移请求不存在",
+    recovery: "请刷新所有权转移列表",
+  },
+  ownership_transfer_not_pending: {
+    statusCode: 409,
+    code: "OWNERSHIP_TRANSFER_STALE",
+    message: "所有权转移请求已经处理",
+    recovery: "请刷新项目和转移状态",
+  },
+  ownership_transfer_stale: {
+    statusCode: 409,
+    code: "OWNERSHIP_TRANSFER_STALE",
+    message: "所有权转移参与者状态已经变化",
+    recovery: "请刷新项目、成员和转移状态",
+  },
+  project_owner_required: {
+    statusCode: 403,
+    code: "FORBIDDEN",
+    message: "该操作仅允许当前 Project Owner 执行",
+    recovery: "请由当前 Project Owner 执行",
+  },
+  owner_or_admin_required: {
+    statusCode: 403,
+    code: "FORBIDDEN",
+    message: "该操作需要 Project Owner 或 Admin 资格",
+    recovery: "请确认当前项目资格",
+  },
+  admin_mode_required: {
+    statusCode: 403,
+    code: "ADMIN_MODE_REQUIRED",
+    message: "该操作需要活动管理员模式",
+    recovery: "请为当前项目显式开启管理员模式",
+  },
+  admin_mode_not_found: {
+    statusCode: 404,
+    code: "ADMIN_MODE_NOT_FOUND",
+    message: "管理员模式会话不存在",
+    recovery: "请重新开启管理员模式",
+  },
+  admin_mode_not_active: {
+    statusCode: 409,
+    code: "ADMIN_MODE_NOT_ACTIVE",
+    message: "管理员模式当前不可用",
+    recovery: "请重新开启管理员模式",
+  },
+  admin_mode_expired: {
+    statusCode: 409,
+    code: "ADMIN_MODE_EXPIRED",
+    message: "管理员模式已经过期",
+    recovery: "请重新开启管理员模式",
+  },
+  admin_mode_scope_mismatch: {
+    statusCode: 403,
+    code: "ADMIN_MODE_SCOPE_MISMATCH",
+    message: "管理员模式不属于当前会话或项目",
+    recovery: "请为当前会话和项目重新开启管理员模式",
+  },
+  web_session_inactive: {
+    statusCode: 401,
+    code: "AUTHENTICATION_REQUIRED",
+    message: "当前登录会话已经失效",
+    recovery: "请重新登录",
+  },
+  self_membership_required: {
+    statusCode: 403,
+    code: "FORBIDDEN",
+    message: "只能直接编辑自己的项目资料",
+    recovery: "编辑他人资料需要合格管理员模式",
+  },
+  target_is_current_owner: {
+    statusCode: 409,
+    code: "OWNERSHIP_TRANSFER_STALE",
+    message: "目标已经是当前 Project Owner",
+    recovery: "请选择其他活动成员",
+  },
+  target_membership_inactive: {
+    statusCode: 409,
+    code: "MEMBERSHIP_NOT_ACTIVE",
+    message: "目标成员不是活动状态",
+    recovery: "请选择活动成员",
+  },
+  ownership_transfer_already_pending: {
+    statusCode: 409,
+    code: "OWNERSHIP_TRANSFER_ALREADY_PENDING",
+    message: "项目已有待处理所有权转移",
+    recovery: "请先处理当前转移请求",
+  },
+  target_membership_required: {
+    statusCode: 404,
+    code: "MEMBERSHIP_NOT_FOUND",
+    message: "目标成员不存在",
+    recovery: "请刷新成员列表",
+  },
+  owner_removal_forbidden: {
+    statusCode: 409,
+    code: "MEMBERSHIP_OWNER_REMOVAL_FORBIDDEN",
+    message: "不能移除当前 Project Owner",
+    recovery: "请先完成所有权转移",
+  },
+  active_task_ownership_blocked: {
+    statusCode: 409,
+    code: "MEMBERSHIP_REMOVAL_BLOCKED",
+    message: "成员仍有效拥有启用态未完成任务",
+    recovery: "请先处理返回的阻塞任务",
+  },
+  project_lifecycle_unchanged: {
+    statusCode: 409,
+    code: "CONFLICT",
+    message: "项目已经处于请求的生命周期状态",
+    recovery: "请刷新项目状态",
+  },
+  project_version_conflict: {
+    statusCode: 409,
+    code: "PROJECT_VERSION_CONFLICT",
+    message: "项目版本已经变化",
+    recovery: "请刷新项目和版本后重试",
+  },
+  membership_version_conflict: {
+    statusCode: 409,
+    code: "MEMBERSHIP_VERSION_CONFLICT",
+    message: "成员版本已经变化",
+    recovery: "请刷新成员和版本后重试",
+  },
+  request_version_conflict: {
+    statusCode: 409,
+    code: "JOIN_REQUEST_VERSION_CONFLICT",
+    message: "加入申请版本已经变化",
+    recovery: "请刷新申请和版本后重试",
+  },
+  transfer_version_conflict: {
+    statusCode: 409,
+    code: "OWNERSHIP_TRANSFER_VERSION_CONFLICT",
+    message: "所有权转移版本已经变化",
+    recovery: "请刷新转移请求和版本后重试",
+  },
+  admin_mode_version_conflict: {
+    statusCode: 409,
+    code: "ADMIN_MODE_VERSION_CONFLICT",
+    message: "管理员模式版本已经变化",
+    recovery: "请刷新管理员模式状态",
+  },
+  role_not_found: {
+    statusCode: 404,
+    code: "PROJECT_ROLE_NOT_FOUND",
+    message: "项目角色不存在",
+    recovery: "请刷新项目角色目录",
+  },
+  project_role_archived: {
+    statusCode: 409,
+    code: "PROJECT_ROLE_ARCHIVED",
+    message: "项目角色已经归档",
+    recovery: "请复制为新的活动角色",
+  },
+  idempotency_conflict: {
+    statusCode: 409,
+    code: "IDEMPOTENCY_CONFLICT",
+    message: "幂等键已用于不同请求",
+    recovery: "请使用原始请求重试或更换幂等键",
+  },
+  forbidden: {
+    statusCode: 403,
+    code: "FORBIDDEN",
+    message: "无权执行该操作",
+    recovery: "请刷新项目成员、所有权和管理员模式状态",
+  },
+} as const satisfies Record<string, ErrorDescriptor>;
+
 const TASK_ERROR_DESCRIPTORS = {
   project_not_found: {
     statusCode: 404,
@@ -263,10 +530,41 @@ export class ApplicationError extends Error {
     message: string,
     readonly recovery?: string,
     readonly currentVersion?: number,
+    readonly blockingTasks?: Array<{ id: string; key: string }>,
   ) {
     super(message);
     this.name = "ApplicationError";
   }
+}
+
+export function m1ApplicationError(
+  reason: string,
+  currentVersion?: number,
+  blockingTasks?: Array<{ id: string; key: string }>,
+): ApplicationError {
+  const descriptor = M1_ERROR_DESCRIPTORS[reason as keyof typeof M1_ERROR_DESCRIPTORS];
+  if (!descriptor) {
+    return new ApplicationError(
+      409,
+      "CONFLICT",
+      "操作与当前权威状态冲突",
+      "请刷新相关资源后重试",
+      currentVersion,
+      blockingTasks,
+    );
+  }
+  return new ApplicationError(
+    descriptor.statusCode,
+    descriptor.code,
+    descriptor.message,
+    descriptor.recovery,
+    currentVersion,
+    blockingTasks,
+  );
+}
+
+export function m1ReasonCode(reason: string): ApiErrorCode {
+  return m1ApplicationError(reason).code;
 }
 
 export function taskApplicationError(reason: string, currentVersion?: number): ApplicationError {

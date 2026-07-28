@@ -1,7 +1,13 @@
 import { type Database, FoundationRepository, IdentityRepository } from "@ngapd/database";
-import type { DeviceAccessTokenRequest, DevicePlatform, PairingDecision } from "@ngapd/contracts";
+import type {
+  DeviceAccessTokenRequest,
+  DevicePlatform,
+  PairingDecision,
+  UpdateUserProfileRequest,
+} from "@ngapd/contracts";
 
 import { ApplicationError } from "./errors.js";
+import { m1ApplicationError, m1ReasonCode } from "../../application-errors.js";
 import {
   createPairingCode,
   createSecret,
@@ -135,6 +141,54 @@ export class IdentityService {
       deviceId: access.device_id,
       expiresAt: access.expires_at,
     };
+  }
+
+  async getProfile(userId: string, context: ServiceContext) {
+    const profile = await this.identity.findUserProfile(userId);
+    if (!profile) {
+      await this.recordProfileFailure(userId, context, "user_not_found");
+      throw m1ApplicationError("user_not_found");
+    }
+    return { ...profile, actions: ["update"] as const };
+  }
+
+  async updateProfile(input: UpdateUserProfileRequest, userId: string, context: ServiceContext) {
+    try {
+      const result = await this.identity.updateUserProfile({
+        userId,
+        displayName: input.displayName,
+        defaultIntroduction: input.defaultIntroduction,
+        defaultRoleTemplateIds: input.defaultRoleTemplateIds,
+        expectedVersion: input.expectedVersion,
+        requestId: context.requestId,
+        now: context.now,
+      });
+      if (!result.ok) {
+        await this.recordProfileFailure(userId, context, result.reason, result.currentVersion);
+        throw m1ApplicationError(result.reason, result.currentVersion);
+      }
+      return { ...result.profile, actions: ["update"] as const };
+    } catch (error) {
+      if (error instanceof ApplicationError) {
+        throw error;
+      }
+      try {
+        await this.foundation.writeAudit({
+          actorUserId: userId,
+          projectId: null,
+          targetType: "user_profile",
+          targetId: userId,
+          requestId: context.requestId,
+          action: "user.profile.update",
+          result: "failure",
+          reasonCode: "INTERNAL_ERROR",
+          metadata: {},
+        });
+      } catch {
+        throw error;
+      }
+      throw error;
+    }
   }
 
   async logout(token: string | undefined, context: ServiceContext): Promise<void> {
@@ -327,6 +381,27 @@ export class IdentityService {
       expiresAt,
     });
     return { token, expiresAt };
+  }
+
+  private async recordProfileFailure(
+    userId: string,
+    context: ServiceContext,
+    reason: string,
+    currentVersion?: number,
+  ): Promise<void> {
+    await this.foundation.writeAudit({
+      actorUserId: userId,
+      projectId: null,
+      targetType: "user_profile",
+      targetId: userId,
+      requestId: context.requestId,
+      action: "user.profile.update",
+      result: "failure",
+      reasonCode: m1ReasonCode(reason),
+      beforeVersion: currentVersion ?? null,
+      afterVersion: null,
+      metadata: {},
+    });
   }
 }
 

@@ -486,7 +486,7 @@ describeWithDatabase("workspace sync API integration", () => {
     const nextOwnerMembership = await foundation.createMembership({
       projectId: project.project.id,
       userId: nextOwner.user.id,
-      role: "member",
+      permissionLevel: "member",
     });
     const task = await foundation.createTaskWithWorkspace({
       projectId: project.project.id,

@@ -71,6 +71,8 @@ describeWithDatabase("authenticated SSE invalidation integration", () => {
         {
           id: "47000000-0000-4000-8000-000000000001",
           project_id: projectId,
+          audience_type: "project",
+          audience_id: projectId,
           aggregate_type: "task",
           aggregate_id: "48000000-0000-4000-8000-000000000001",
           event_type: "task.updated",
@@ -80,6 +82,8 @@ describeWithDatabase("authenticated SSE invalidation integration", () => {
         {
           id: "47000000-0000-4000-8000-000000000002",
           project_id: otherProjectId,
+          audience_type: "project",
+          audience_id: otherProjectId,
           aggregate_type: "task",
           aggregate_id: "48000000-0000-4000-8000-000000000002",
           event_type: "task.updated",

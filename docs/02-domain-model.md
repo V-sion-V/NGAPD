@@ -1,8 +1,10 @@
 # 领域模型与任务状态机
 
-文档状态：设计基线 0.5
+文档状态：设计基线 0.6（M1 实现同步）
 
 相关文档：[产品需求](01-product-requirements.md) · [权限模型](03-permission-model.md) · [工作区设计](05-workspace-context-wiki.md)
+
+实现同步（2026-07-29）：M1 领域权威已落在共享 TypeBox 契约、纯领域规则和 PostgreSQL version 2/`0008-m1-project-role-members`；Web、API、Worker 与 Workspace 路径复用同一 Membership、Project Owner、Admin Mode 和租约规则。
 
 ## 1. 聚合边界
 
@@ -91,16 +93,12 @@ erDiagram
 | `id` | 项目角色主键 |
 | `project_id` | 所属项目；系统模板使用独立模板表 |
 | `source_template_id` | 可选，记录复制来源 |
-| `name` | 如“客户端程序员 L2” |
-| `level` | 可选的可比较等级，不强制跨角色比较 |
-| `capabilities` | 能力范围文本 |
-| `responsibilities` | 可独立负责事项 |
-| `limitations` | 不适合或不得独立决定事项 |
-| `task_hints` | 适合的任务类型与关键词 |
-| `agent_prompt` | 面向 Agent 的角色提示文本 |
+| `name` | 如“客户端程序员 L2”；承载人类可读名称和可选等级语义 |
+| `capability` | 单一能力/Agent 提示文本；可描述能力、责任边界、禁区和任务类型，但不参与授权 |
 | `status` | active / archived |
+| `version` | 乐观并发版本 |
 
-逻辑角色只提供上下文、任务能力标注与推荐，不参与授权判断。角色归档后，已有 Task 的 `logical_role_id` 历史引用继续保留，但新任务或新修改不能再绑定该角色。系统首批角色模板见[逻辑角色模板](11-logical-role-templates.json)；其中技术角色族同时包含程序开发和 QA。
+逻辑角色只提供上下文、任务能力标注与推荐，不参与授权判断。角色归档后，已有 Task 和 Membership 的历史绑定继续保留，但不能建立新绑定；复制会创建新的独立活动角色。系统首批模板只保存 `id/title/desc`，创建项目时将 `title`/`desc` 复制为项目角色的 `name`/`capability`；正式清单见[逻辑角色模板](11-logical-role-templates.json)，其中技术角色族同时包含程序开发和 QA。
 
 ### 4.3 ProjectMembership
 
@@ -147,7 +145,7 @@ effective_owner(task):
     return nearest ancestor whose owner_membership_id is not null
 ```
 
-顶层任务必须保存活动成员作为显式 Owner。子任务显式 Owner 为空不表示无人负责，而是继承最近祖先；只有数据修复或成员移除等异常路径可能暂时产生无法解析有效 Owner 的启用态任务，此时任务不能开始或完成。任务级工作区写入资格、普通任务权限、上下文 Owner 展示和通知都使用有效 Owner；审计同时记录显式 Owner 与解析出的有效 Owner。
+顶层任务必须保存活动成员作为显式 Owner。子任务显式 Owner 为空不表示无人负责，而是继承最近祖先；只有数据修复等异常路径可能暂时产生无法解析有效 Owner 的启用态任务，此时任务不能开始或完成。成员移除不会制造该状态：存在由目标成员有效拥有的未完成任务时，移除事务直接拒绝。任务级工作区写入资格、普通任务权限、上下文 Owner 展示和通知都使用有效 Owner；审计同时记录显式 Owner 与解析出的有效 Owner。
 
 ### 4.5 TaskDependency
 
@@ -456,10 +454,9 @@ MVP 不自动迁移或删除依赖；存在相关依赖时拒绝移动，并返�
 
 ### 7.5 成员移除与项目所有权
 
-- 移除普通成员或 Project Admin 时，所有未完成任务中指向该成员的显式 `owner_membership_id` 在同一事务中置空，并按祖先链重新计算有效 Owner。
-- 仍无法解析有效 Owner 的未完成任务保留内容、结构、工作区和逻辑角色，但不能进入 `in_progress` 或 `done`，直至设置活动显式 Owner。
-- 已完成任务保持冻结并保留指向已移除 Membership 的历史 Owner 引用；重新打开时必须同时设置活动显式 Owner。
-- 成员移除会立即撤销其项目级和任务级工作区租约。
+- 移除普通成员或 Project Admin 前，在同一事务和固定锁序中计算由目标 Membership 当前有效拥有的未完成 Task；只要清单非空就拒绝，并返回稳定排序的阻塞 Task ID/Key。
+- 移除成功只把 Membership 状态更新为 `removed`，不清空或重写任何未完成/已完成 Task 的显式 Owner，也不删除 Membership、角色绑定或历史引用。
+- 移除成功会立即撤销该成员的 Admin Mode、项目级/任务级工作区能力和活动租约；失败则 Membership、Task、能力、审计成功记录和 Outbox 均不产生半成品。
 - Project Owner 不能直接移除或停用；必须先发起所有权转移，并由目标活动成员接受。
 - 项目所有权转移只更新 `Project.owner_membership_id` 这一权威来源；该更新、成员权限变化和项目级工作区租约资格变化必须原子提交，项目始终恰有一个 Project Owner。
 
@@ -503,7 +500,7 @@ MVP 不自动迁移或删除依赖；存在相关依赖时拒绝移动，并返�
 - 每次活动依赖增删、任务移动、端点归档、祖先归档导致端点退出启用态或节点删除，都必须锁定全部受影响的父级图版本记录并原子递增各自的 `graph_version`。
 - 移动任务必须按稳定主键顺序同时锁定源父级和目标父级的图版本记录；在锁内重新检查源任务没有活动依赖、目标父任务未完成以及父子无环，再更新 `parent_task_id` 并递增两个作用域的 `graph_version`。依赖增删与移动共享同一锁边界，避免并发产生跨父依赖。
 - 显式 Task Owner 变化、任务级写入租约释放或撤销、受影响后代的有效 Owner 重算和新 Owner 授权必须在同一业务事务中完成；Task Owner 指派不等待目标成员接受。
-- 成员移除导致的未完成任务显式 Owner 批量置空、有效 Owner 重算与租约撤销必须在同一事务中完成；已完成任务的历史 Owner 不改写。
+- 成员移除必须锁定 Project、Membership、相关 Task/Workspace 后先验证未完成有效 Owner 阻塞；存在阻塞时完整回滚，成功时只更新 Membership 并撤销能力/租约，不改写 Task Owner。
 - Project Owner/Admin 权限被撤销时，如果其持有项目级工作区租约，授权变化与租约撤销必须原子化。
 - 用户被停用时，其用户级工作区租约必须立即撤销并阻止新写入。
 - 任务完成时锁定当前 Task 及所属同级图版本，重新检查子任务、前置任务、阻塞状态和所有依赖端点；若显式 Owner 为空则在同一事务中固化当前有效 Owner，然后完成并冻结，防止祖先 Owner 或依赖并发穿透冻结边界。

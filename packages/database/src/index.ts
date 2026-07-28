@@ -3,6 +3,8 @@ export * from "./foundation-repository.js";
 export * from "./identity-repository.js";
 export * from "./migrator.js";
 export * from "./outbox-repository.js";
+export * from "./project-membership-repository.js";
+export * from "./project-role-repository.js";
 export * from "./schema-profile.js";
 export * from "./task-repository.js";
 export * from "./task-lifecycle-repository.js";

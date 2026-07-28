@@ -1,4 +1,5 @@
 import { sql, type Kysely, type Migration, type MigrationProvider } from "kysely";
+import { SYSTEM_LOGICAL_ROLE_TEMPLATES } from "@ngapd/domain";
 
 import { FORMAL_SCHEMA_PROFILE, FORMAL_SCHEMA_VERSION } from "./schema-profile.js";
 
@@ -1137,6 +1138,297 @@ const applicationProjectionsMigration: Migration = {
   },
 };
 
+const m1ProjectRoleMembersMigration: Migration = {
+  async up(database: Kysely<unknown>) {
+    await sql`
+      alter table users
+        add column display_name varchar(80),
+        add column default_introduction text not null default '',
+        add column version bigint not null default 1 check (version >= 1);
+
+      update users set display_name = login_name where display_name is null;
+
+      alter table users
+        alter column display_name set not null,
+        add constraint users_display_name_length_check
+          check (char_length(display_name) between 1 and 80),
+        add constraint users_default_introduction_length_check
+          check (char_length(default_introduction) <= 4000);
+
+      create table system_logical_role_templates (
+        id varchar(160) primary key,
+        title varchar(160) not null check (char_length(title) between 1 and 160),
+        description text not null check (char_length(description) between 1 and 4000),
+        created_at timestamptz not null default now()
+      );
+
+      create table user_default_role_templates (
+        user_id uuid not null references users(id) on delete cascade,
+        template_id varchar(160) not null references system_logical_role_templates(id),
+        created_at timestamptz not null default now(),
+        primary key (user_id, template_id)
+      );
+
+      alter table projects
+        add column description text not null default '',
+        add constraint projects_description_length_check
+          check (char_length(description) <= 8000);
+
+      alter table memberships rename column role to permission_level;
+      alter table memberships
+        add column status varchar(16),
+        add column introduction text not null default '',
+        add column version bigint not null default 1 check (version >= 1),
+        add column has_been_active boolean not null default true,
+        add column updated_at timestamptz not null default now();
+
+      update memberships
+      set
+        status = case when active then 'active' else 'removed' end,
+        permission_level = case when active then permission_level else 'member' end;
+
+      alter table memberships
+        alter column status set not null,
+        drop column active,
+        add constraint memberships_status_check
+          check (status in ('pending', 'active', 'removed')),
+        add constraint memberships_introduction_length_check
+          check (char_length(introduction) <= 4000);
+
+      create table membership_join_requests (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        membership_id uuid not null,
+        requested_by_user_id uuid not null references users(id),
+        resolved_by_membership_id uuid references memberships(id),
+        status varchar(16) not null default 'pending'
+          check (status in ('pending', 'approved', 'rejected', 'stale')),
+        version bigint not null default 1 check (version >= 1),
+        idempotency_key varchar(128) not null,
+        created_at timestamptz not null default now(),
+        resolved_at timestamptz,
+        updated_at timestamptz not null default now(),
+        foreign key (membership_id, project_id)
+          references memberships(id, project_id),
+        unique (project_id, requested_by_user_id, idempotency_key),
+        check (
+          (status = 'pending' and resolved_at is null and resolved_by_membership_id is null)
+          or (status <> 'pending' and resolved_at is not null)
+        )
+      );
+      create unique index membership_join_requests_pending_unique
+        on membership_join_requests(membership_id)
+        where status = 'pending';
+      create index membership_join_requests_project_status_idx
+        on membership_join_requests(project_id, status, created_at, id);
+
+      create table project_logical_roles (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        source_template_id varchar(160) references system_logical_role_templates(id),
+        name varchar(160) not null check (char_length(name) between 1 and 160),
+        capability text not null check (char_length(capability) between 1 and 4000),
+        status varchar(16) not null default 'active'
+          check (status in ('active', 'archived')),
+        version bigint not null default 1 check (version >= 1),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (id, project_id)
+      );
+      create unique index project_logical_roles_template_snapshot_unique
+        on project_logical_roles(project_id, source_template_id)
+        where source_template_id is not null;
+      create index project_logical_roles_project_status_idx
+        on project_logical_roles(project_id, status, name, id);
+
+      create table membership_logical_roles (
+        membership_id uuid not null,
+        project_id uuid not null,
+        role_id uuid not null,
+        created_at timestamptz not null default now(),
+        primary key (membership_id, role_id),
+        foreign key (membership_id, project_id)
+          references memberships(id, project_id),
+        foreign key (role_id, project_id)
+          references project_logical_roles(id, project_id)
+      );
+
+      create table project_ownership_transfer_requests (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        from_owner_membership_id uuid not null,
+        target_membership_id uuid not null,
+        status varchar(16) not null default 'pending'
+          check (status in ('pending', 'accepted', 'rejected', 'cancelled', 'stale')),
+        version bigint not null default 1 check (version >= 1),
+        idempotency_key varchar(128) not null,
+        created_at timestamptz not null default now(),
+        resolved_at timestamptz,
+        updated_at timestamptz not null default now(),
+        foreign key (from_owner_membership_id, project_id)
+          references memberships(id, project_id),
+        foreign key (target_membership_id, project_id)
+          references memberships(id, project_id),
+        unique (project_id, from_owner_membership_id, idempotency_key),
+        check (from_owner_membership_id <> target_membership_id),
+        check (
+          (status = 'pending' and resolved_at is null)
+          or (status <> 'pending' and resolved_at is not null)
+        )
+      );
+      create unique index project_ownership_transfer_pending_unique
+        on project_ownership_transfer_requests(project_id)
+        where status = 'pending';
+
+      create table admin_mode_sessions (
+        id uuid primary key,
+        web_session_id uuid not null references web_sessions(id) on delete cascade,
+        project_id uuid not null references projects(id) on delete cascade,
+        membership_id uuid not null,
+        status varchar(16) not null default 'active'
+          check (status in ('active', 'closed', 'expired', 'revoked')),
+        issued_at timestamptz not null,
+        last_protected_activity_at timestamptz not null,
+        expires_at timestamptz not null,
+        revoked_reason varchar(80),
+        version bigint not null default 1 check (version >= 1),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        foreign key (membership_id, project_id)
+          references memberships(id, project_id),
+        check (expires_at > issued_at),
+        check (last_protected_activity_at >= issued_at)
+      );
+      create unique index admin_mode_sessions_active_scope_unique
+        on admin_mode_sessions(web_session_id, project_id)
+        where status = 'active';
+      create index admin_mode_sessions_expiry_idx
+        on admin_mode_sessions(status, expires_at);
+
+      create table m1_idempotency_records (
+        id uuid primary key,
+        actor_user_id uuid not null references users(id),
+        project_id uuid references projects(id) on delete cascade,
+        operation varchar(80) not null,
+        idempotency_key varchar(128) not null,
+        request_sha256 char(64) not null check (request_sha256 ~ '^[0-9a-f]{64}$'),
+        response jsonb not null,
+        created_at timestamptz not null default now(),
+        unique (actor_user_id, operation, idempotency_key)
+      );
+
+      alter table outbox_events
+        add column audience_type varchar(16),
+        add column audience_id uuid;
+      update outbox_events
+      set audience_type = 'project', audience_id = project_id
+      where project_id is not null;
+      alter table outbox_events
+        alter column audience_type set not null,
+        alter column audience_id set not null,
+        add constraint outbox_events_audience_type_check
+          check (audience_type in ('user', 'project')),
+        add constraint outbox_events_audience_scope_check
+          check (
+            (audience_type = 'project' and project_id = audience_id)
+            or (audience_type = 'user' and project_id is null)
+          );
+      create index outbox_events_audience_pending_idx
+        on outbox_events(audience_type, audience_id, available_at, created_at)
+        where processed_at is null;
+
+      alter table resource_invalidation_events
+        alter column project_id drop not null,
+        add column audience_type varchar(16),
+        add column audience_id uuid;
+      update resource_invalidation_events
+      set audience_type = 'project', audience_id = project_id;
+      alter table resource_invalidation_events
+        alter column audience_type set not null,
+        alter column audience_id set not null,
+        add constraint resource_invalidation_events_audience_type_check
+          check (audience_type in ('user', 'project')),
+        add constraint resource_invalidation_events_audience_scope_check
+          check (
+            (audience_type = 'project' and project_id = audience_id)
+            or (audience_type = 'user' and project_id is null)
+          );
+      create index resource_invalidation_events_audience_cursor_idx
+        on resource_invalidation_events(audience_type, audience_id, cursor);
+    `.execute(database);
+
+    for (const template of SYSTEM_LOGICAL_ROLE_TEMPLATES) {
+      await sql`
+        insert into system_logical_role_templates (id, title, description)
+        values (${template.id}, ${template.title}, ${template.desc})
+      `.execute(database);
+    }
+
+    await sql`
+      insert into project_logical_roles (
+        id,
+        project_id,
+        source_template_id,
+        name,
+        capability
+      )
+      select
+        md5(projects.id::text || ':' || templates.id)::uuid,
+        projects.id,
+        templates.id,
+        templates.title,
+        templates.description
+      from projects
+      cross join system_logical_role_templates templates
+      on conflict (project_id, source_template_id)
+        where source_template_id is not null
+        do nothing
+    `.execute(database);
+
+    await sql`
+      create function ngapd_check_project_active_owner()
+      returns trigger
+      language plpgsql
+      as $function$
+      begin
+        if exists (
+          select 1
+          from projects
+          left join memberships
+            on memberships.id = projects.owner_membership_id
+          where memberships.id is null
+             or memberships.project_id <> projects.id
+             or memberships.status <> 'active'
+        ) then
+          raise exception using errcode = '23514', message = 'PROJECT_ACTIVE_OWNER_REQUIRED';
+        end if;
+        return null;
+      end
+      $function$
+    `.execute(database);
+
+    await sql`
+      create constraint trigger projects_active_owner_guard
+      after insert or update on projects
+      deferrable initially deferred
+      for each row execute function ngapd_check_project_active_owner()
+    `.execute(database);
+
+    await sql`
+      create constraint trigger memberships_active_owner_guard
+      after insert or update or delete on memberships
+      deferrable initially deferred
+      for each row execute function ngapd_check_project_active_owner()
+    `.execute(database);
+
+    await sql`
+      update system_metadata
+      set value = ${FORMAL_SCHEMA_VERSION}, updated_at = now()
+      where key = 'schema_profile_version'
+    `.execute(database);
+  },
+};
+
 export class StaticMigrationProvider implements MigrationProvider {
   async getMigrations(): Promise<Record<string, Migration>> {
     return {
@@ -1147,6 +1439,7 @@ export class StaticMigrationProvider implements MigrationProvider {
       "0005-task-graph-guards": taskGraphGuardsMigration,
       "0006-task-workspace-lifecycle": taskWorkspaceLifecycleMigration,
       "0007-application-projections": applicationProjectionsMigration,
+      "0008-m1-project-role-members": m1ProjectRoleMembersMigration,
     };
   }
 }

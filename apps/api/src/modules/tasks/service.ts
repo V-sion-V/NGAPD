@@ -429,7 +429,7 @@ export class TaskApplicationService {
     if (
       !applicationActor.userActive ||
       !applicationActor.membershipId ||
-      !applicationActor.membershipActive
+      applicationActor.membershipStatus !== "active"
     ) {
       await this.recordFailure({
         actor,

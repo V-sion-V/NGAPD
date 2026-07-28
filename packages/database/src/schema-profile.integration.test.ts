@@ -49,7 +49,7 @@ async function rebuild(target: string): Promise<string> {
   return schemaFingerprint();
 }
 
-describeWithDatabase("formal M0 schema profile PostgreSQL integration", () => {
+describeWithDatabase("formal M1 schema profile PostgreSQL integration", () => {
   afterAll(async () => {
     await database?.destroy();
   });
@@ -70,7 +70,7 @@ describeWithDatabase("formal M0 schema profile PostgreSQL integration", () => {
     await expect(inspectDatabaseSchema(database!)).resolves.toMatchObject({
       status: "ready",
       profile: "m0-domain-baseline",
-      version: "1",
+      version: "2",
       appliedMigrations: [
         "0001-system-metadata",
         "0002-workspace-foundation",
@@ -79,6 +79,7 @@ describeWithDatabase("formal M0 schema profile PostgreSQL integration", () => {
         "0005-task-graph-guards",
         "0006-task-workspace-lifecycle",
         "0007-application-projections",
+        "0008-m1-project-role-members",
       ],
     });
 

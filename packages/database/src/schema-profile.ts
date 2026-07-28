@@ -3,7 +3,8 @@ import { sql, type Kysely } from "kysely";
 import type { DatabaseSchema } from "./types.js";
 
 export const FORMAL_SCHEMA_PROFILE = "m0-domain-baseline";
-export const FORMAL_SCHEMA_VERSION = "1";
+export const FORMAL_SCHEMA_VERSION = "2";
+export const PREVIOUS_FORMAL_SCHEMA_VERSION = "1";
 
 export const FORMAL_MIGRATION_NAMES = [
   "0001-system-metadata",
@@ -13,14 +14,17 @@ export const FORMAL_MIGRATION_NAMES = [
   "0005-task-graph-guards",
   "0006-task-workspace-lifecycle",
   "0007-application-projections",
+  "0008-m1-project-role-members",
 ] as const;
+
+export const PREVIOUS_FORMAL_MIGRATION_NAMES = FORMAL_MIGRATION_NAMES.slice(0, 7);
 
 export type DatabaseSchemaStatus =
   | { status: "empty"; appliedMigrations: [] }
   | {
       status: "ready" | "behind";
       profile: typeof FORMAL_SCHEMA_PROFILE;
-      version: typeof FORMAL_SCHEMA_VERSION;
+      version: typeof FORMAL_SCHEMA_VERSION | typeof PREVIOUS_FORMAL_SCHEMA_VERSION;
       appliedMigrations: string[];
       expectedMigration: string;
     }
@@ -117,7 +121,7 @@ export async function inspectDatabaseSchema(
       version,
     };
   }
-  if (profile !== FORMAL_SCHEMA_PROFILE || version !== FORMAL_SCHEMA_VERSION) {
+  if (profile !== FORMAL_SCHEMA_PROFILE) {
     return {
       status: "unknown",
       reason: "schema profile or profile version is not recognized",
@@ -128,6 +132,37 @@ export async function inspectDatabaseSchema(
   }
 
   const expected: string[] = [...FORMAL_MIGRATION_NAMES];
+  if (version === PREVIOUS_FORMAL_SCHEMA_VERSION) {
+    const isCompletePreviousBaseline =
+      appliedMigrations.length === PREVIOUS_FORMAL_MIGRATION_NAMES.length &&
+      appliedMigrations.every((name, index) => PREVIOUS_FORMAL_MIGRATION_NAMES[index] === name);
+    if (!isCompletePreviousBaseline) {
+      return {
+        status: "unknown",
+        reason: "version 1 is recognized only with the complete 0001-0007 formal baseline",
+        appliedMigrations,
+        profile,
+        version,
+      };
+    }
+    return {
+      status: "behind",
+      profile,
+      version,
+      appliedMigrations,
+      expectedMigration: expected.at(-1)!,
+    };
+  }
+  if (version !== FORMAL_SCHEMA_VERSION) {
+    return {
+      status: "unknown",
+      reason: "schema profile version is not recognized",
+      appliedMigrations,
+      profile,
+      version,
+    };
+  }
+
   const unexpected = appliedMigrations.filter((name) => !expected.includes(name));
   const isPrefix = appliedMigrations.every((name, index) => expected[index] === name);
   if (unexpected.length > 0 || !isPrefix || appliedMigrations.length > expected.length) {

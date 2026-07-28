@@ -1,8 +1,10 @@
 # 系统概要设计
 
-文档状态：设计基线 0.5
+文档状态：设计基线 0.6（M1 实现同步）
 
 相关文档：[产品需求](01-product-requirements.md) · [领域模型](02-domain-model.md) · [工作区设计](05-workspace-context-wiki.md) · [Agent 设计](06-agent-integration.md) · [技术架构决策](09-technical-architecture-decisions.md)
+
+实现同步（2026-07-29）：正式数据库 profile 为 version 2/`0008-m1-project-role-members`；M1 已交付 Fastify `/api/v1`/OpenAPI 3.1、共享领域/Repository、不可变审计、Outbox→Graphile Worker→SSE 和 React 中文可访问治理 Web。
 
 ## 1. 架构目标
 
@@ -78,7 +80,7 @@ flowchart LR
 - Project Key 分配和项目生命周期。
 - 加入申请、审批、成员资料和权限角色。
 - `Project.owner_membership_id` 是 Project Owner 唯一权威来源；Membership 权限级别只有 admin / member。
-- 成员移除时仅清空未完成任务中指向该成员的显式 Owner，并重新计算继承出的有效 Owner；已完成任务保留历史 Owner。
+- 成员移除前查询并锁定由目标 Membership 有效拥有的未完成 Task；存在阻塞时拒绝并返回 Task 清单，成功移除不清空或改写 Task Owner。
 - Project Owner 必须先完成由接收者接受的项目所有权转移。
 - 管理员模式短期能力签发。
 - 项目创建时创建唯一项目级逻辑工作区；Project Owner/Admin 写入资格随成员权限维护。
@@ -87,8 +89,8 @@ flowchart LR
 ### 4.3 Roles
 
 - 系统角色模板；首批模板来自[逻辑角色模板](11-logical-role-templates.json)，包含策划、技术、美术、音乐与声音，技术角色族同时覆盖程序开发与 QA。
-- 创建项目时复制快照。
-- 项目逻辑角色和成员多角色绑定。
+- 创建项目时把模板 `title/desc` 复制为独立项目角色的 `name/capability` 快照。
+- 项目逻辑角色只保存名称、单一能力/Agent 提示文本、来源、状态和版本；支持成员多角色绑定，角色不参与授权。
 
 ### 4.4 Tasks
 
@@ -145,7 +147,7 @@ flowchart LR
 
 ## 5. 本地 Workspace 核心与未来适配器
 
-当前本地入口是无界面的 `ngapd-workspace` CLI。UI 无关的模型、端口与服务位于 `@ngapd/workspace-core`；CLI 只负责人工诊断、JSON 呈现和 MCP stdio 适配。首版只声明状态与诊断能力，不访问 Workspace 路径，也不包含写能力。
+当前本地入口是无界面的 `ngapd-workspace` CLI。UI 无关的模型、端口与服务位于 `@ngapd/workspace-core`；CLI 已支持一次性设备配对、状态/诊断、Workspace 注册与物化、租约、同步和显式冲突取舍，平台适配器负责凭据与文件系统边界。MCP stdio 仍只暴露只读状态/诊断工具，不把同步写能力直接暴露给 Agent。
 
 后续同步平台适配器可以在独立需求和安全设计下承担：
 
@@ -180,7 +182,7 @@ stdio 以外的本地 IPC、OS 用户隔离、宿主配对、短期本地能力�
 
 ### 7.1 关系数据库
 
-保存：
+正式 Schema profile version 2 的最新迁移是 `0008-m1-project-role-members`。保存：
 
 - 用户、项目、成员和逻辑角色。
 - 任务、显式 Owner、父子关系、依赖、关注、父级图版本、依赖变更请求、阻塞和状态。
@@ -201,10 +203,11 @@ stdio 以外的本地 IPC、OS 用户隔离、宿主配对、短期本地能力�
 
 ### 8.1 基本约定
 
-- 使用版本化 HTTP/JSON API。
+- 公共 API 固定使用 `/api/v1` 版本化 HTTP/JSON，并生成 OpenAPI 3.1。
+- Web 会话使用 SameSite Cookie 和 Same-Origin 写入校验；请求未知字段 fail closed，设备/Workspace 使用单独的短期凭据。
 - 资源更新携带 `version` 或条件请求头。
 - 创建、Agent 确认执行、上传完成等接口支持幂等键。
-- 错误返回稳定机器码、用户可读说明和修复建议。
+- 错误返回稳定机器码、用户可读说明、请求 ID、恢复建议和适用的当前版本/阻塞 Task。
 - 长耗时摘要、索引和大文件处理返回作业 ID。
 
 ### 8.2 代表性资源
@@ -234,9 +237,11 @@ stdio 以外的本地 IPC、OS 用户隔离、宿主配对、短期本地能力�
 /projects/{projectKey}/restore
 ```
 
+M1 当前公共表面还包含个人资料、精确 Project Key 加入目标/申请、成员移除 preview、所有权转移、Admin Mode session、系统模板和 Project Role 子资源。资源响应携带服务端计算的 `actions` 供客户端呈现；每次写入仍重新解析会话、项目、Membership、Admin Mode 和版本，不能把按钮可见性当作授权。
+
 ### 8.3 实时事件
 
-Web UI 和本地客户端需要接收任务、租约、同步和通知变化。可使用 WebSocket 或服务端事件流；实时通道只负责提示客户端重新获取权威资源，不承担业务提交。
+Web UI 和本地客户端通过 `GET /api/v1/events` 的 SSE 接收 `resource-invalidated`。业务事务把精确 user/project audience Outbox 与状态/审计原子提交，Graphile Worker 至少一次处理并保留游标；客户端只把事件当作重新获取权威资源的提示，重连或游标过期先 refetch，实时通道不承担业务提交。
 
 ## 9. 关键流程
 
@@ -298,6 +303,8 @@ sequenceDiagram
 ```
 
 ## 10. 初版任务界面架构
+
+M1 Web 使用 React 19 与 TanStack Query：同源 API/error 层、按 user/project 分区的稳定 query key、一次用户意图一个幂等键，以及只在当前 React 内存保存的项目级 Admin Mode ID。中文界面覆盖认证、资料、项目、精确 Key 加入、申请/成员、所有权、Admin Mode 和角色目录；危险动作使用语义确认并展示目标、状态和后果。既有 `?prototype=task-ui` 入口继续保留，后续 M2 在同一 Web/权限基础上交付正式任务界面。
 
 初版不实现语义缩放、嵌套画布或节点内子图，而是围绕一个明确的“当前父级作用域”渲染平铺树状页面：
 

@@ -8,7 +8,7 @@ export interface TaskOwnershipNode {
 export interface OwnershipMembership {
   id: string;
   projectId: string;
-  active: boolean;
+  status: "pending" | "active" | "removed";
 }
 
 export type TaskOwnerResolution =
@@ -75,7 +75,7 @@ export function resolveEffectiveTaskOwner(
       if (!membership) {
         return { ok: false, reason: "owner_missing" };
       }
-      if (!membership.active) {
+      if (membership.status !== "active") {
         return { ok: false, reason: "owner_inactive" };
       }
       if (membership.projectId !== first.projectId) {

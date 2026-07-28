@@ -26,8 +26,8 @@ export interface WorkspaceAuthorizationSnapshot {
       id: string;
       userId: string;
       projectId: string;
-      role: "admin" | "member";
-      active: boolean;
+      permissionLevel: "admin" | "member";
+      status: "pending" | "active" | "removed";
     };
   };
   context: {
@@ -35,6 +35,7 @@ export interface WorkspaceAuthorizationSnapshot {
     scopeOwnerUserId?: string;
     projectId?: string;
     projectOwnerMembershipId?: string;
+    projectLifecycle?: "active" | "archived";
   };
   taskId?: string;
   tasks: Array<{
@@ -43,7 +44,11 @@ export interface WorkspaceAuthorizationSnapshot {
     parentTaskId: string | null;
     explicitOwnerMembershipId: string | null;
   }>;
-  memberships: Array<{ id: string; projectId: string; active: boolean }>;
+  memberships: Array<{
+    id: string;
+    projectId: string;
+    status: "pending" | "active" | "removed";
+  }>;
 }
 
 export interface WorkspaceManifestRecord {
@@ -223,6 +228,48 @@ export class WorkspaceRepository {
     ) => Promise<T>,
   ): Promise<T | undefined> {
     return this.database.transaction().execute(async (transaction) => {
+      const workspaceScope = await transaction
+        .selectFrom("workspaces")
+        .select(["scope_type", "scope_id"])
+        .where("id", "=", workspaceId)
+        .executeTakeFirst();
+      if (!workspaceScope) {
+        return undefined;
+      }
+      const projectId =
+        workspaceScope.scope_type === "project"
+          ? workspaceScope.scope_id
+          : workspaceScope.scope_type === "task"
+            ? (
+                await transaction
+                  .selectFrom("tasks")
+                  .select("project_id")
+                  .where("id", "=", workspaceScope.scope_id)
+                  .executeTakeFirst()
+              )?.project_id
+            : undefined;
+      if (workspaceScope.scope_type === "task" && !projectId) {
+        return undefined;
+      }
+      if (projectId) {
+        const project = await transaction
+          .selectFrom("projects")
+          .select("id")
+          .where("id", "=", projectId)
+          .forUpdate()
+          .executeTakeFirst();
+        if (!project) {
+          return undefined;
+        }
+        await transaction
+          .selectFrom("memberships")
+          .select("id")
+          .where("project_id", "=", projectId)
+          .where("user_id", "=", actorUserId)
+          .orderBy("id")
+          .forUpdate()
+          .execute();
+      }
       const workspace = await transaction
         .selectFrom("workspaces")
         .selectAll()
@@ -231,6 +278,12 @@ export class WorkspaceRepository {
         .executeTakeFirst();
       if (!workspace) {
         return undefined;
+      }
+      if (
+        workspace.scope_type !== workspaceScope.scope_type ||
+        workspace.scope_id !== workspaceScope.scope_id
+      ) {
+        throw new Error("WORKSPACE_SCOPE_CHANGED");
       }
       const mapped = mapWorkspace(workspace);
       const authorization = await loadAuthorizationSnapshot(transaction, mapped, actorUserId);
@@ -705,14 +758,14 @@ async function loadAuthorizationSnapshot(
   const project = projectId
     ? await executor
         .selectFrom("projects")
-        .select(["id", "owner_membership_id"])
+        .select(["id", "owner_membership_id", "lifecycle"])
         .where("id", "=", projectId)
         .executeTakeFirst()
     : undefined;
   const membership = projectId
     ? await executor
         .selectFrom("memberships")
-        .select(["id", "user_id", "project_id", "role", "active"])
+        .select(["id", "user_id", "project_id", "permission_level", "status"])
         .where("project_id", "=", projectId)
         .where("user_id", "=", actorUserId)
         .executeTakeFirst()
@@ -727,12 +780,15 @@ async function loadAuthorizationSnapshot(
   const memberships = projectId
     ? await executor
         .selectFrom("memberships")
-        .select(["id", "project_id", "active"])
+        .select(["id", "project_id", "status"])
         .where("project_id", "=", projectId)
         .execute()
     : [];
   return {
-    workspace,
+    workspace:
+      project?.lifecycle === "archived"
+        ? { ...workspace, lifecycle: "archived" as const }
+        : workspace,
     actor: membership
       ? {
           ...actor,
@@ -740,8 +796,8 @@ async function loadAuthorizationSnapshot(
             id: membership.id,
             userId: membership.user_id,
             projectId: membership.project_id,
-            role: membership.role,
-            active: membership.active,
+            permissionLevel: membership.permission_level,
+            status: membership.status,
           },
         }
       : actor,
@@ -751,6 +807,7 @@ async function loadAuthorizationSnapshot(
       ...(project?.owner_membership_id
         ? { projectOwnerMembershipId: project.owner_membership_id }
         : {}),
+      ...(project?.lifecycle ? { projectLifecycle: project.lifecycle } : {}),
     },
     ...(task ? { taskId: task.id } : {}),
     tasks: tasks.map((node) => ({
@@ -762,7 +819,7 @@ async function loadAuthorizationSnapshot(
     memberships: memberships.map((item) => ({
       id: item.id,
       projectId: item.project_id,
-      active: item.active,
+      status: item.status,
     })),
   };
 }

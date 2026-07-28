@@ -10,22 +10,22 @@ export function createWorkspaceAuthorizationFixture() {
       id: "membership-owner",
       userId: users.owner.userId,
       projectId: "project-sync",
-      role: "member" as const,
-      active: true,
+      permissionLevel: "member" as const,
+      status: "active" as const,
     },
     admin: {
       id: "membership-admin",
       userId: users.admin.userId,
       projectId: "project-sync",
-      role: "admin" as const,
-      active: true,
+      permissionLevel: "admin" as const,
+      status: "active" as const,
     },
     member: {
       id: "membership-member",
       userId: users.member.userId,
       projectId: "project-sync",
-      role: "member" as const,
-      active: true,
+      permissionLevel: "member" as const,
+      status: "active" as const,
     },
   };
   const tasks = [

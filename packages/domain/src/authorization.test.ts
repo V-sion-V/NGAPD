@@ -15,8 +15,8 @@ const member: AuthorizationActor = {
     id: "membership-member",
     userId: "user-member",
     projectId: "project-1",
-    role: "member",
-    active: true,
+    permissionLevel: "member",
+    status: "active",
   },
 };
 
@@ -81,6 +81,15 @@ describe("workspace authorization", () => {
         { ...member, active: false },
       ),
     ).toEqual({ allowed: false, reason: "account_inactive" });
+    expect(
+      resolveWorkspaceReadAccess(
+        { scopeType: "project", projectId: "project-1" },
+        {
+          ...member,
+          membership: { ...member.membership!, status: "removed" },
+        },
+      ),
+    ).toEqual({ allowed: false, reason: "membership_inactive" });
   });
 
   it("keeps authenticated user-workspace reads separate from owner-only writes and Agent intent", () => {
