@@ -3,6 +3,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
 
 import { writeAudit } from "./foundation-repository.js";
+import { writeM1Success } from "./m1-repository-support.js";
 import type { DatabaseSchema, PairingRequestTable } from "./types.js";
 
 export const MAX_PAIRING_ASSOCIATION_ATTEMPTS = 5;
@@ -46,8 +47,141 @@ export interface IssueDeviceAccessTokenInput {
   now: Date;
 }
 
+export interface UserProfileRecord {
+  userId: string;
+  displayName: string;
+  defaultIntroduction: string;
+  defaultRoleTemplateIds: string[];
+  version: number;
+}
+
+export type UpdateUserProfileResult =
+  | { ok: true; profile: UserProfileRecord }
+  | {
+      ok: false;
+      reason: "user_not_found" | "user_inactive" | "version_conflict" | "template_not_found";
+      currentVersion?: number;
+    };
+
 export class IdentityRepository {
   constructor(private readonly database: Kysely<DatabaseSchema>) {}
+
+  async findUserProfile(userId: string): Promise<UserProfileRecord | undefined> {
+    const user = await this.database
+      .selectFrom("users")
+      .select(["id", "display_name", "default_introduction", "version"])
+      .where("id", "=", userId)
+      .executeTakeFirst();
+    if (!user) {
+      return undefined;
+    }
+    const templates = await this.database
+      .selectFrom("user_default_role_templates")
+      .select("template_id")
+      .where("user_id", "=", userId)
+      .orderBy("template_id")
+      .execute();
+    return {
+      userId: user.id,
+      displayName: user.display_name,
+      defaultIntroduction: user.default_introduction,
+      defaultRoleTemplateIds: templates.map((template) => template.template_id),
+      version: Number(user.version),
+    };
+  }
+
+  async updateUserProfile(input: {
+    userId: string;
+    displayName: string;
+    defaultIntroduction: string;
+    defaultRoleTemplateIds: readonly string[];
+    expectedVersion: number;
+    requestId: string;
+    now: Date;
+  }): Promise<UpdateUserProfileResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const user = await transaction
+        .selectFrom("users")
+        .select(["id", "active", "version"])
+        .where("id", "=", input.userId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!user) {
+        return { ok: false, reason: "user_not_found" };
+      }
+      if (!user.active) {
+        return { ok: false, reason: "user_inactive" };
+      }
+      const currentVersion = Number(user.version);
+      if (currentVersion !== input.expectedVersion) {
+        return { ok: false, reason: "version_conflict", currentVersion };
+      }
+
+      const templateIds = [...new Set(input.defaultRoleTemplateIds)].sort((left, right) =>
+        left.localeCompare(right, "en"),
+      );
+      if (templateIds.length > 0) {
+        const templates = await transaction
+          .selectFrom("system_logical_role_templates")
+          .select("id")
+          .where("id", "in", templateIds)
+          .orderBy("id")
+          .execute();
+        if (templates.length !== templateIds.length) {
+          return { ok: false, reason: "template_not_found" };
+        }
+      }
+
+      const nextVersion = currentVersion + 1;
+      await transaction
+        .updateTable("users")
+        .set({
+          display_name: input.displayName,
+          default_introduction: input.defaultIntroduction,
+          version: String(nextVersion),
+          updated_at: input.now,
+        })
+        .where("id", "=", input.userId)
+        .executeTakeFirstOrThrow();
+      await transaction
+        .deleteFrom("user_default_role_templates")
+        .where("user_id", "=", input.userId)
+        .execute();
+      if (templateIds.length > 0) {
+        await transaction
+          .insertInto("user_default_role_templates")
+          .values(
+            templateIds.map((templateId) => ({ user_id: input.userId, template_id: templateId })),
+          )
+          .execute();
+      }
+      await writeM1Success(transaction, {
+        actorUserId: input.userId,
+        projectId: null,
+        requestId: input.requestId,
+        action: "user.profile.update",
+        reasonCode: "USER_PROFILE_UPDATED",
+        targetType: "user_profile",
+        targetId: input.userId,
+        beforeVersion: currentVersion,
+        afterVersion: nextVersion,
+        audienceType: "user",
+        audienceId: input.userId,
+        eventType: "user.profile.updated",
+        payload: { userId: input.userId, version: nextVersion },
+      });
+      return {
+        ok: true,
+        profile: {
+          userId: input.userId,
+          displayName: input.displayName,
+          defaultIntroduction: input.defaultIntroduction,
+          defaultRoleTemplateIds: templateIds,
+          version: nextVersion,
+        },
+      };
+    });
+  }
 
   async findUserForLogin(normalizedLoginName: string) {
     return this.database

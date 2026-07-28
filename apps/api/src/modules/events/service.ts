@@ -44,6 +44,8 @@ function toInvalidationEvent(record: ResourceInvalidationRecord): ResourceInvali
   return {
     cursor: record.cursor,
     projectId: record.projectId,
+    audienceType: record.audienceType,
+    audienceId: record.audienceId,
     resourceType: record.resourceType,
     resourceId: record.resourceId,
     eventType: record.eventType,

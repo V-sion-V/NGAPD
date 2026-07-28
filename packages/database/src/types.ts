@@ -20,6 +20,9 @@ export interface UserTable {
   login_name: string;
   normalized_login_name: string;
   password_hash: string;
+  display_name: Generated<string>;
+  default_introduction: Generated<string>;
+  version: Generated<string>;
   active: Generated<boolean>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
@@ -82,6 +85,7 @@ export interface ProjectTable {
   id: string;
   project_key: ColumnType<string, string, never>;
   name: string;
+  description: Generated<string>;
   owner_membership_id: string;
   task_sequence: Generated<string>;
   completed_successor_reopen_policy: Generated<"deny" | "cascade">;
@@ -96,8 +100,97 @@ export interface MembershipTable {
   id: string;
   project_id: string;
   user_id: string;
-  role: "admin" | "member";
-  active: Generated<boolean>;
+  permission_level: "admin" | "member";
+  status: "pending" | "active" | "removed";
+  introduction: Generated<string>;
+  version: Generated<string>;
+  has_been_active: Generated<boolean>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface SystemLogicalRoleTemplateTable {
+  id: string;
+  title: string;
+  description: string;
+  created_at: CreatedAt;
+}
+
+export interface UserDefaultRoleTemplateTable {
+  user_id: string;
+  template_id: string;
+  created_at: CreatedAt;
+}
+
+export interface MembershipJoinRequestTable {
+  id: string;
+  project_id: string;
+  membership_id: string;
+  requested_by_user_id: string;
+  resolved_by_membership_id: NullableValue<string>;
+  status: Generated<"pending" | "approved" | "rejected" | "stale">;
+  version: Generated<string>;
+  idempotency_key: string;
+  created_at: CreatedAt;
+  resolved_at: NullableTimestamp;
+  updated_at: UpdatedAt;
+}
+
+export interface ProjectLogicalRoleTable {
+  id: string;
+  project_id: string;
+  source_template_id: NullableValue<string>;
+  name: string;
+  capability: string;
+  status: Generated<"active" | "archived">;
+  version: Generated<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface MembershipLogicalRoleTable {
+  membership_id: string;
+  project_id: string;
+  role_id: string;
+  created_at: CreatedAt;
+}
+
+export interface ProjectOwnershipTransferRequestTable {
+  id: string;
+  project_id: string;
+  from_owner_membership_id: string;
+  target_membership_id: string;
+  status: Generated<"pending" | "accepted" | "rejected" | "cancelled" | "stale">;
+  version: Generated<string>;
+  idempotency_key: string;
+  created_at: CreatedAt;
+  resolved_at: NullableTimestamp;
+  updated_at: UpdatedAt;
+}
+
+export interface AdminModeSessionTable {
+  id: string;
+  web_session_id: string;
+  project_id: string;
+  membership_id: string;
+  status: Generated<"active" | "closed" | "expired" | "revoked">;
+  issued_at: ColumnType<Date, Date | string, never>;
+  last_protected_activity_at: ColumnType<Date, Date | string, Date | string>;
+  expires_at: ColumnType<Date, Date | string, Date | string>;
+  revoked_reason: NullableValue<string>;
+  version: Generated<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface M1IdempotencyRecordTable {
+  id: string;
+  actor_user_id: string;
+  project_id: NullableValue<string>;
+  operation: string;
+  idempotency_key: string;
+  request_sha256: string;
+  response: ColumnType<Record<string, unknown>, Record<string, unknown>, Record<string, unknown>>;
   created_at: CreatedAt;
 }
 
@@ -332,6 +425,8 @@ export interface TaskOperationIdempotencyTable {
 export interface OutboxEventTable {
   id: string;
   project_id: NullableValue<string>;
+  audience_type: "user" | "project";
+  audience_id: string;
   aggregate_type: string;
   aggregate_id: string;
   event_type: string;
@@ -347,7 +442,9 @@ export interface OutboxEventTable {
 export interface ResourceInvalidationEventTable {
   cursor: Generated<string>;
   outbox_event_id: string;
-  project_id: string;
+  project_id: NullableValue<string>;
+  audience_type: "user" | "project";
+  audience_id: string;
   resource_type: string;
   resource_id: string;
   event_type: string;
@@ -370,6 +467,14 @@ export interface DatabaseSchema {
   pairing_requests: PairingRequestTable;
   projects: ProjectTable;
   memberships: MembershipTable;
+  membership_join_requests: MembershipJoinRequestTable;
+  system_logical_role_templates: SystemLogicalRoleTemplateTable;
+  user_default_role_templates: UserDefaultRoleTemplateTable;
+  project_logical_roles: ProjectLogicalRoleTable;
+  membership_logical_roles: MembershipLogicalRoleTable;
+  project_ownership_transfer_requests: ProjectOwnershipTransferRequestTable;
+  admin_mode_sessions: AdminModeSessionTable;
+  m1_idempotency_records: M1IdempotencyRecordTable;
   tasks: TaskTable;
   sibling_task_graph_scopes: SiblingTaskGraphScopeTable;
   task_dependencies: TaskDependencyTable;

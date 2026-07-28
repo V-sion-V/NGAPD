@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 
+import { SYSTEM_LOGICAL_ROLE_TEMPLATES } from "@ngapd/domain";
 import { describe, expect, it } from "vitest";
 
 async function readJson(relativePath: string): Promise<unknown> {
@@ -59,12 +60,13 @@ describe("repository prototype fixtures", () => {
       Record<string, unknown>
     >;
 
-    expect(roles.length).toBeGreaterThan(0);
+    expect(roles).toHaveLength(74);
     for (const role of roles) {
       expect(Object.keys(role).sort()).toEqual(["desc", "id", "title"]);
       expect(role.id).toEqual(expect.any(String));
       expect(role.title).toEqual(expect.any(String));
       expect(role.desc).toEqual(expect.any(String));
     }
+    expect(SYSTEM_LOGICAL_ROLE_TEMPLATES).toEqual(roles);
   });
 });

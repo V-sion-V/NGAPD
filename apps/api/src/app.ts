@@ -5,11 +5,17 @@ import { EventRepository, WorkspaceRepository, type Database } from "@ngapd/data
 import type { ObjectStore } from "@ngapd/object-store";
 import Fastify, { type FastifyInstance } from "fastify";
 
+import { registerAdminModeRoutes } from "./modules/authorization-audit/routes.js";
+import { AdminModeService } from "./modules/authorization-audit/service.js";
 import { ApplicationError } from "./modules/identity/errors.js";
 import { registerEventRoutes } from "./modules/events/routes.js";
 import { EventService } from "./modules/events/service.js";
 import { registerIdentityRoutes } from "./modules/identity/routes.js";
 import { IdentityService } from "./modules/identity/service.js";
+import { registerProjectsMembershipRoutes } from "./modules/projects-membership/routes.js";
+import { ProjectsMembershipService } from "./modules/projects-membership/service.js";
+import { registerRoleRoutes } from "./modules/roles/routes.js";
+import { RolesService } from "./modules/roles/service.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { WorkspaceService } from "./modules/workspaces/service.js";
 
@@ -40,6 +46,11 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
   const app = Fastify({
     logger: options.logger ?? false,
     requestIdHeader: "x-request-id",
+    ajv: {
+      customOptions: {
+        removeAdditional: false,
+      },
+    },
   });
 
   await app.register(swagger, {
@@ -109,15 +120,35 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
 
   if (options.database) {
     const identity = new IdentityService(options.database);
+    const now = options.now ?? (() => new Date());
+    const publicOrigin = options.publicOrigin ?? "https://ngapd.local";
     await registerIdentityRoutes(app, {
       service: identity,
-      publicOrigin: options.publicOrigin ?? "https://ngapd.local",
-      now: options.now ?? (() => new Date()),
+      publicOrigin,
+      now,
+    });
+    await registerProjectsMembershipRoutes(app, {
+      identity,
+      service: new ProjectsMembershipService(options.database),
+      publicOrigin,
+      now,
+    });
+    await registerRoleRoutes(app, {
+      identity,
+      service: new RolesService(options.database),
+      publicOrigin,
+      now,
+    });
+    await registerAdminModeRoutes(app, {
+      identity,
+      service: new AdminModeService(options.database),
+      publicOrigin,
+      now,
     });
     await registerEventRoutes(app, {
       identity,
       events: new EventService(new EventRepository(options.database)),
-      now: options.now ?? (() => new Date()),
+      now,
       ...(options.eventPollIntervalMs === undefined
         ? {}
         : { pollIntervalMs: options.eventPollIntervalMs }),
@@ -132,7 +163,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
           new WorkspaceRepository(options.database),
           options.objectStore,
         ),
-        now: options.now ?? (() => new Date()),
+        now,
       });
     }
   }
@@ -144,6 +175,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
         message: error.message,
         requestId: request.id,
         ...(error.currentVersion === undefined ? {} : { currentVersion: error.currentVersion }),
+        ...(error.blockingTasks === undefined ? {} : { blockingTasks: error.blockingTasks }),
         ...(error.recovery ? { recovery: error.recovery } : {}),
       });
       return;

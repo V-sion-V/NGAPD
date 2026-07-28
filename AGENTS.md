@@ -8,10 +8,10 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 
 ## 当前开发阶段与目标
 
-- 已完成基线：三个前置原型、Workspace CLI 初始工作流，以及 M0“领域基线和工程骨架”；M0 `change-0`、`change-1` 与严格纠正运行 `change-2` 均为 `completed/passed`。
-- 当前开发状态：M0 没有活动纠正运行，Follow/Blocker 低层授权与并发条件缺口已关闭，AC-010 的 M0/M2 验收来源链已澄清；仓库可进入 M1 的独立需求澄清与规划。
-- 后续路线图：M1“项目、角色和成员”交付注册登录、项目生命周期、逻辑工作区、成员审批、唯一 Project Owner 及转移、管理员模式审计和逻辑角色绑定。
-- 阶段依据：[M0 change-2 完成记录](docs/requirements/m0-domain-baseline/change-2.md)、[change-2 执行状态](docs/requirements/m0-domain-baseline/execution/change-2/execution-state.md)与[实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
+- 已完成基线：三个前置原型、Workspace CLI 初始工作流、M0“领域基线和工程骨架”，以及 M1“项目、角色和成员”完整初始运行；M0 `change-0`、`change-1`、严格纠正运行 `change-2` 和 M1 P-001/P-002/P-003 均为 `completed/passed`。
+- 当前开发状态：M1 已交付正式 Schema version 2/`0008-m1-project-role-members`、完整 Repository/治理事务、应用服务、`/api/v1`/OpenAPI/审计/Outbox/SSE、中文 React Web、项目治理与可访问性闭环；最终 Node 24/pnpm 11/PostgreSQL 17/真实 Windows Workspace 根 `pnpm check` 为 273 tests passed、0 failed、7 platform-conditional skipped。Compose 与参考服务器 P95 因当前环境不可用按合同记为 `not_run`，附加 PostgreSQL 并发诊断通过，无开放 finding。
+- 后续路线图：M1 初始历史已由 `change-0.md` 与 `effective-requirements.md` 冻结；后续需求或行为变化必须使用 `$apply-feature-change` 创建连续 change run，不得改写 P-001/P-002/P-003 result 或 initial `change-0`。
+- 阶段依据：[M1 P-001 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-001-result.md)、[M1 P-002 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-002-result.md)、[M1 P-003 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-003-result.md)、[M1 初始实现记录](docs/requirements/m1-project-role-members/change-0.md)、[M1 当前有效需求](docs/requirements/m1-project-role-members/effective-requirements.md)、[M1 执行状态](docs/requirements/m1-project-role-members/execution/initial/execution-state.md)与[总体实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
 
 ## 文档索引
 
@@ -32,6 +32,7 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 | `docs/requirements/`                          | schema-v3 功能工作流的需求、计划、执行证据和变更记录 |
 | `docs/requirements/agent-context-prototype/`  | Agent 上下文前置原型的封存记录                       |
 | `docs/requirements/m0-domain-baseline/`       | M0 领域基线与工程骨架的封存记录                      |
+| `docs/requirements/m1-project-role-members/`  | M1 项目、角色和成员的活动工作流记录                  |
 | `docs/requirements/task-ui-prototype/`        | Task UI 前置原型的封存记录                           |
 | `docs/requirements/workspace-cli/`            | Workspace CLI 初始实现的封存记录                     |
 | `docs/requirements/workspace-sync-prototype/` | Workspace 同步前置原型的封存记录                     |

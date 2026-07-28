@@ -15,6 +15,8 @@ import {
   PairingWebSummarySchema,
   RegisterRequestSchema,
   SessionActorSchema,
+  UpdateUserProfileRequestSchema,
+  UserProfileSchema,
   type DeviceAccessTokenRequest,
   type LoginRequest,
   type PairingCliStatusRequest,
@@ -22,6 +24,7 @@ import {
   type PairingDecision,
   type PairingRequest,
   type RegisterRequest,
+  type UpdateUserProfileRequest,
 } from "@ngapd/contracts";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
@@ -108,6 +111,46 @@ export async function registerIdentityRoutes(
         loginName: session.loginName,
         expiresAt: session.expiresAt.toISOString(),
       };
+    },
+  );
+
+  app.get(
+    "/api/v1/users/me/profile",
+    {
+      schema: {
+        response: {
+          200: UserProfileSchema,
+          401: ApiErrorSchema,
+          403: ApiErrorSchema,
+          404: ApiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      const session = await actor(request);
+      return options.service.getProfile(session.userId, context(request));
+    },
+  );
+
+  app.patch<{ Body: UpdateUserProfileRequest }>(
+    "/api/v1/users/me/profile",
+    {
+      schema: {
+        body: UpdateUserProfileRequestSchema,
+        response: {
+          200: UserProfileSchema,
+          400: ApiErrorSchema,
+          401: ApiErrorSchema,
+          403: ApiErrorSchema,
+          409: ApiErrorSchema,
+          422: ApiErrorSchema,
+        },
+      },
+    },
+    async (request) => {
+      assertSameOrigin(request, options.publicOrigin);
+      const session = await actor(request);
+      return options.service.updateProfile(request.body, session.userId, context(request));
     },
   );
 

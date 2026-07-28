@@ -107,6 +107,8 @@ describeWithDatabase("outbox projection PostgreSQL integration", () => {
         ids.map((entry) => ({
           id: entry.id,
           project_id: projectId,
+          audience_type: "project",
+          audience_id: projectId,
           aggregate_type: "task",
           aggregate_id: entry.aggregateId,
           event_type: "task.updated",
@@ -185,12 +187,32 @@ describeWithDatabase("outbox projection PostgreSQL integration", () => {
       aggregateId: "11000000-0000-4000-8000-000000000099",
     });
     await new OutboxRepository(database!).dispatchNext({ now: farFuture() });
+    const ownerUserOutboxId = "10000000-0000-4000-8000-000000000097";
+    const otherUserOutboxId = "10000000-0000-4000-8000-000000000098";
+    await insertUserOutbox(database!, {
+      id: ownerUserOutboxId,
+      userId: ownerId,
+      aggregateId: ownerId,
+    });
+    await insertUserOutbox(database!, {
+      id: otherUserOutboxId,
+      userId: otherOwnerId,
+      aggregateId: otherOwnerId,
+    });
+    await new OutboxRepository(database!).dispatchNext({ now: farFuture() });
+    await new OutboxRepository(database!).dispatchNext({ now: farFuture() });
 
     const events = new EventRepository(database!);
     const visible = await events.readAuthorized({ userId: ownerId, afterCursor: "0" });
     expect(visible.length).toBeGreaterThan(0);
-    expect(new Set(visible.map((event) => event.projectId))).toEqual(new Set([projectId]));
+    expect(
+      new Set(
+        visible.filter((event) => event.audienceType === "project").map((event) => event.projectId),
+      ),
+    ).toEqual(new Set([projectId]));
     expect(visible.some((event) => event.outboxEventId === otherOutboxId)).toBe(false);
+    expect(visible.some((event) => event.outboxEventId === ownerUserOutboxId)).toBe(true);
+    expect(visible.some((event) => event.outboxEventId === otherUserOutboxId)).toBe(false);
 
     const cursor = visible.at(-1)!.cursor;
     await events.pruneThrough(cursor);
@@ -243,9 +265,31 @@ async function insertOutbox(
     .values({
       id: input.id,
       project_id: input.projectId,
+      audience_type: "project",
+      audience_id: input.projectId,
       aggregate_type: "task",
       aggregate_id: input.aggregateId,
       event_type: "task.updated",
+      request_id: `request-${input.id}`,
+      payload: {},
+    })
+    .execute();
+}
+
+async function insertUserOutbox(
+  executor: Pick<NonNullable<typeof database>, "insertInto">,
+  input: { id: string; userId: string; aggregateId: string },
+) {
+  await executor
+    .insertInto("outbox_events")
+    .values({
+      id: input.id,
+      project_id: null,
+      audience_type: "user",
+      audience_id: input.userId,
+      aggregate_type: "user-profile",
+      aggregate_id: input.aggregateId,
+      event_type: "user-profile.updated",
       request_id: `request-${input.id}`,
       payload: {},
     })

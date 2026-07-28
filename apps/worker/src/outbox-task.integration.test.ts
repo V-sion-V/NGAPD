@@ -50,6 +50,8 @@ describeWithDatabase("Graphile outbox task PostgreSQL integration", () => {
       return {
         id: `30000000-0000-4000-8000-${suffix}`,
         project_id: projectId,
+        audience_type: "project" as const,
+        audience_id: projectId,
         aggregate_type: "task",
         aggregate_id: `31000000-0000-4000-8000-${suffix}`,
         event_type: "task.updated",
@@ -116,6 +118,8 @@ describeWithDatabase("Graphile outbox task PostgreSQL integration", () => {
       .values({
         id: outboxId,
         project_id: projectId,
+        audience_type: "project",
+        audience_id: projectId,
         aggregate_type: "task",
         aggregate_id: "31000000-0000-4000-8000-000000000099",
         event_type: "task.updated",

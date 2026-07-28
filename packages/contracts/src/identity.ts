@@ -7,6 +7,8 @@ export const LoginNameSchema = Type.String({
 });
 
 export const PasswordSchema = Type.String({ minLength: 12, maxLength: 256 });
+export const DisplayNameSchema = Type.String({ minLength: 1, maxLength: 80 });
+export const IntroductionSchema = Type.String({ maxLength: 4_000 });
 
 export const RegisterRequestSchema = Type.Object(
   {
@@ -29,6 +31,34 @@ export const SessionActorSchema = Type.Object(
     userId: Type.String({ format: "uuid" }),
     loginName: Type.String(),
     expiresAt: Type.String({ format: "date-time" }),
+  },
+  { additionalProperties: false },
+);
+
+export const UserProfileActionSchema = Type.Union([Type.Literal("update")]);
+
+export const UserProfileSchema = Type.Object(
+  {
+    userId: Type.String({ format: "uuid" }),
+    displayName: DisplayNameSchema,
+    defaultIntroduction: IntroductionSchema,
+    defaultRoleTemplateIds: Type.Array(Type.String({ minLength: 1, maxLength: 160 }), {
+      uniqueItems: true,
+    }),
+    version: Type.Integer({ minimum: 1 }),
+    actions: Type.Array(UserProfileActionSchema, { uniqueItems: true }),
+  },
+  { additionalProperties: false },
+);
+
+export const UpdateUserProfileRequestSchema = Type.Object(
+  {
+    displayName: DisplayNameSchema,
+    defaultIntroduction: IntroductionSchema,
+    defaultRoleTemplateIds: Type.Array(Type.String({ minLength: 1, maxLength: 160 }), {
+      uniqueItems: true,
+    }),
+    expectedVersion: Type.Integer({ minimum: 1 }),
   },
   { additionalProperties: false },
 );
@@ -84,6 +114,9 @@ export const EmptySuccessSchema = Type.Object(
 export type RegisterRequest = Static<typeof RegisterRequestSchema>;
 export type LoginRequest = Static<typeof LoginRequestSchema>;
 export type SessionActor = Static<typeof SessionActorSchema>;
+export type UserProfileAction = Static<typeof UserProfileActionSchema>;
+export type UserProfile = Static<typeof UserProfileSchema>;
+export type UpdateUserProfileRequest = Static<typeof UpdateUserProfileRequestSchema>;
 export type DevicePlatform = Static<typeof DevicePlatformSchema>;
 export type DeviceSummary = Static<typeof DeviceSummarySchema>;
 export type DeviceAccessTokenRequest = Static<typeof DeviceAccessTokenRequestSchema>;

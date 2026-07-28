@@ -15,6 +15,7 @@ import {
 } from "@ngapd/domain";
 import type { Kysely, Transaction } from "kysely";
 
+import { lockMemberships } from "./m1-repository-support.js";
 import type { DatabaseSchema } from "./types.js";
 
 export type TaskLifecycleFailurePoint =
@@ -136,8 +137,8 @@ interface LifecycleFacts {
     id: string;
     projectId: string;
     userId: string;
-    role: "admin" | "member";
-    active: boolean;
+    permissionLevel: "admin" | "member";
+    status: "pending" | "active" | "removed";
     userActive: boolean;
   }>;
   dependencies: Array<{
@@ -487,6 +488,26 @@ export class TaskLifecycleRepository {
         if (!target) {
           return { ok: false, reason: "task_not_found", taskIds: [input.taskId] };
         }
+        await transaction
+          .selectFrom("projects")
+          .select("id")
+          .where("id", "=", target.project_id)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+        const expectedOwnerMembershipIds = [
+          ...new Set([input.actorMembershipId, ...Object.values(input.expectedOwnerMembershipIds)]),
+        ];
+        const lockedOwners = await lockMemberships(
+          transaction,
+          target.project_id,
+          expectedOwnerMembershipIds,
+        );
+        if (
+          lockedOwners.length !== expectedOwnerMembershipIds.length ||
+          lockedOwners.some((membership) => membership.status !== "active")
+        ) {
+          return { ok: false, reason: "forbidden", taskIds: [input.taskId] };
+        }
         const actor = await loadLifecycleActor(
           transaction,
           target.project_id,
@@ -733,6 +754,24 @@ export class TaskLifecycleRepository {
     let auditContext: { projectId: string; actorUserId: string; taskVersion: number } | undefined;
     try {
       return await this.database.transaction().execute(async (transaction) => {
+        const taskLocation = await transaction
+          .selectFrom("tasks")
+          .select(["id", "project_id"])
+          .where("id", "=", input.taskId)
+          .executeTakeFirst();
+        if (!taskLocation) {
+          return { ok: false, reason: "task_not_found" };
+        }
+        await transaction
+          .selectFrom("projects")
+          .select("id")
+          .where("id", "=", taskLocation.project_id)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+        const lockedMemberships = await lockMemberships(transaction, taskLocation.project_id, [
+          input.actorMembershipId,
+          input.nextOwnerMembershipId,
+        ]);
         const task = await transaction
           .selectFrom("tasks")
           .select([
@@ -791,13 +830,14 @@ export class TaskLifecycleRepository {
             idempotentReplay: true,
           };
         }
-        const nextOwner = await transaction
-          .selectFrom("memberships")
-          .select(["id", "project_id", "active"])
-          .where("id", "=", input.nextOwnerMembershipId)
-          .forUpdate()
-          .executeTakeFirst();
-        if (!nextOwner || !nextOwner.active || nextOwner.project_id !== task.project_id) {
+        const nextOwner = lockedMemberships.find(
+          (membership) => membership.id === input.nextOwnerMembershipId,
+        );
+        if (
+          !nextOwner ||
+          nextOwner.status !== "active" ||
+          nextOwner.project_id !== task.project_id
+        ) {
           return { ok: false, reason: "owner_invalid" };
         }
         let facts = await loadLifecycleFacts(transaction, task.project_id);
@@ -1128,8 +1168,8 @@ async function loadLifecycleFacts(
       "memberships.id",
       "memberships.project_id",
       "memberships.user_id",
-      "memberships.role",
-      "memberships.active",
+      "memberships.permission_level",
+      "memberships.status",
       "users.active as user_active",
     ])
     .where("memberships.project_id", "=", projectId)
@@ -1145,7 +1185,7 @@ async function loadLifecycleFacts(
     mapOwnershipMembership({
       id: membership.id,
       projectId: membership.project_id,
-      active: membership.active,
+      status: membership.status,
     }),
   );
   const ownerByTaskId = new Map<string, string>();
@@ -1162,8 +1202,8 @@ async function loadLifecycleFacts(
       id: membership.id,
       projectId: membership.project_id,
       userId: membership.user_id,
-      role: membership.role,
-      active: membership.active,
+      permissionLevel: membership.permission_level,
+      status: membership.status,
       userActive: membership.user_active,
     })),
     dependencies: dependencies.map((dependency) => ({
@@ -1186,8 +1226,8 @@ async function loadLifecycleActor(
       "memberships.id",
       "memberships.project_id",
       "memberships.user_id",
-      "memberships.role",
-      "memberships.active",
+      "memberships.permission_level",
+      "memberships.status",
       "users.active as user_active",
     ])
     .where("memberships.id", "=", membershipId)
@@ -1198,8 +1238,8 @@ async function loadLifecycleActor(
         id: actor.id,
         projectId: actor.project_id,
         userId: actor.user_id,
-        role: actor.role,
-        active: actor.active,
+        permissionLevel: actor.permission_level,
+        status: actor.status,
         userActive: actor.user_active,
       }
     : undefined;
@@ -1209,8 +1249,8 @@ function mapAuthorizationActor(actor: {
   id: string;
   projectId: string;
   userId: string;
-  role: "admin" | "member";
-  active: boolean;
+  permissionLevel: "admin" | "member";
+  status: "pending" | "active" | "removed";
   userActive: boolean;
 }) {
   return {
@@ -1220,8 +1260,8 @@ function mapAuthorizationActor(actor: {
       id: actor.id,
       userId: actor.userId,
       projectId: actor.projectId,
-      role: actor.role,
-      active: actor.active,
+      permissionLevel: actor.permissionLevel,
+      status: actor.status,
     },
   };
 }
@@ -1319,12 +1359,12 @@ function mapOwnershipNode(task: LifecycleTaskRow): TaskOwnershipNode {
 function mapOwnershipMembership(membership: {
   id: string;
   projectId: string;
-  active: boolean;
+  status: "pending" | "active" | "removed";
 }): OwnershipMembership {
   return {
     id: membership.id,
     projectId: membership.projectId,
-    active: membership.active,
+    status: membership.status,
   };
 }
 
@@ -1435,6 +1475,8 @@ async function writeLifecycleOutbox(
     .values({
       id: randomUUID(),
       project_id: input.projectId,
+      audience_type: "project",
+      audience_id: input.projectId,
       aggregate_type: "task",
       aggregate_id: input.taskId,
       event_type: input.eventType,

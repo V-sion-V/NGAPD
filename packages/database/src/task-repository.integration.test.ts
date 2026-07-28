@@ -68,7 +68,7 @@ async function addMember(projectId: string, label: string) {
   const membership = await foundation!.createMembership({
     projectId,
     userId: user.user.id,
-    role: "member",
+    permissionLevel: "member",
   });
   return { user, membership };
 }
@@ -602,7 +602,7 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
 
     await database!
       .updateTable("memberships")
-      .set({ active: false })
+      .set({ status: "removed", permission_level: "member" })
       .where("id", "=", sourceOwner.membership.id)
       .execute();
     await expect(
@@ -718,7 +718,7 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
     });
     await database!
       .updateTable("memberships")
-      .set({ active: false })
+      .set({ status: "removed", permission_level: "member" })
       .where("id", "=", inactiveOwner.membership.id)
       .execute();
     await expect(
@@ -792,27 +792,28 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
 
   it("uses a recursive CTE for depth-20 effective Owner and diagnoses inactivity", async () => {
     const { project } = await seedProject("TREE");
+    const taskOwner = await addMember(project.project.id, "tree-owner");
     let parentTaskId: string | null = null;
     let deepestTaskId = "";
     for (let depth = 0; depth < 20; depth += 1) {
       const task = await createTask({
         projectId: project.project.id,
-        actorMembershipId: project.ownerMembership.id,
+        actorMembershipId: taskOwner.membership.id,
         label: `tree-${depth}`,
         parentTaskId,
-        explicitOwnerMembershipId: depth === 0 ? project.ownerMembership.id : null,
+        explicitOwnerMembershipId: depth === 0 ? taskOwner.membership.id : null,
       });
       parentTaskId = task.id;
       deepestTaskId = task.id;
     }
     await expect(repository!.resolveEffectiveOwner(deepestTaskId)).resolves.toMatchObject({
       ok: true,
-      membershipId: project.ownerMembership.id,
+      membershipId: taskOwner.membership.id,
     });
     await database!
       .updateTable("memberships")
-      .set({ active: false })
-      .where("id", "=", project.ownerMembership.id)
+      .set({ status: "removed", permission_level: "member" })
+      .where("id", "=", taskOwner.membership.id)
       .execute();
     await expect(repository!.resolveEffectiveOwner(deepestTaskId)).resolves.toEqual({
       ok: false,

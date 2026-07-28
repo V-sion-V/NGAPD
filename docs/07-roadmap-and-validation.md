@@ -1,8 +1,10 @@
 # 实施路线与验收策略
 
-文档状态：设计基线 0.5
+文档状态：设计基线 0.6（M1 completed/passed）
 
 相关文档：[产品需求](01-product-requirements.md) · [系统架构](04-system-architecture.md) · [决策记录](08-decisions-and-open-issues.md)
+
+实现同步（2026-07-29）：三个前置原型、Workspace CLI 初始工作流、M0 和 M1 均已 completed/passed。M1 的共享领域/数据、完整后端、中文 Web 治理、活动正式文档与最终根门禁已经收口；Compose 与参考服务器 P95 因当前环境不可用按合同记为 `not_run`，附加并发诊断通过。
 
 ## 1. 实施原则
 
@@ -107,6 +109,8 @@
 
 ### M1：项目、角色和成员
 
+实现状态（2026-07-29）：P-001/P-002/P-003 与 initial `change-0` 均 completed/passed；正式 Schema 为 version 2/`0008-m1-project-role-members`，最终根门禁为 273 tests passed、0 failed，中文多身份治理、文档一致性和附加 PostgreSQL 并发诊断均通过。
+
 交付：
 
 - 注册登录、项目创建/归档/恢复。
@@ -114,7 +118,8 @@
 - 加入申请和审批。
 - `Project.owner_membership_id` 作为 Project Owner 唯一权威来源，Membership 只含 Admin/Member；Project Owner 转移由接收者接受且项目始终有唯一 Owner。
 - 管理员模式开关和审计。
-- 基于[逻辑角色模板](11-logical-role-templates.json)导入策划、技术、美术、音乐与声音角色，创建项目快照，并支持多角色绑定和自我介绍。
+- 基于[逻辑角色模板](11-logical-role-templates.json)导入策划、技术、美术、音乐与声音角色，把模板 `title/desc` 复制为名称与单一能力/Agent 提示文本，并支持角色版本、复制/归档、多角色绑定和自我介绍。
+- `/api/v1`/OpenAPI、服务端 `actions`、不可变审计、精确 user/project audience Outbox/SSE，以及中文可访问 React Web 的 Profile、项目、精确 Key 加入、成员、所有权、Admin Mode 和角色目录。
 
 验收门槛：管理员资格不等于自动启用管理员模式；逻辑角色不能授予权限。
 
@@ -124,7 +129,7 @@
 
 - 多层任务树和任务详情。
 - 显式 Owner 与最近祖先继承出的单一有效 Owner、无需接收者接受的后代指派/清空、统一任务正文、可选任务逻辑角色、UTC 截止时间、标签和仅影响外观的展示类型。
-- 成员移除时清空未完成任务的显式 Owner 并重新计算继承；已完成任务保留历史 Owner。
+- 成员移除前按未完成有效 Task Owner 做阻塞预览；存在阻塞 Task 时拒绝，成功移除不清空或改写任何 Task Owner。
 - 同级依赖、`graph_version`、跨 Owner 变更接受与环检测。
 - 任务关注及 Agent 一跳上下文发现契约。
 - 基础/有效状态、人工阻塞、完成后全冻结，以及 `deny / cascade` 重新打开策略。
@@ -257,6 +262,7 @@ MVP 截止在 M6 的基础能力，并包含项目级一致备份与原项目恢
 - 用户本人和其他已认证用户对用户级工作区的底层读写差异，以及 Agent 缺少明确用户指令时不得跨用户读取。
 - Agent 已确认但用户本身无权的操作。
 - 顶层 Owner 对后代的即时显式 Owner 分配、显式 Owner 主动清空回落，以及已完成任务 Owner 冻结。
+- 成员移除在存在未完成有效 Owner Task 时返回稳定阻塞清单；重新指派后成功移除只改变 Membership/能力/租约，不改写 Task Owner 或历史绑定。
 
 所有公开写入入口都运行同一组授权契约测试。
 
@@ -266,7 +272,7 @@ MVP 截止在 M6 的基础能力，并包含项目级一致备份与原项目恢
 - 临时文件原子替换。
 - 租约续租、过期、接管和时钟偏差。
 - 显式 Owner 变化、有效 Owner 重算与同步/租约事务。
-- 新建、继承、后代即时指派、主动清空回落、成员移除后未完成任务显式 Owner 批量置空，以及 Project Owner 接受式转移。
+- 新建、继承、后代即时指派、主动清空回落、成员移除阻塞/成功不改 Task Owner，以及 Project Owner 接受式转移。
 - 两名合格 Project Admin 对同一项目级工作区争用唯一租约。
 - 三种工作区各自的读取者、写入者资格变化和租约撤销。
 - macOS/Windows 路径、大小写、保留名称和 Unicode。

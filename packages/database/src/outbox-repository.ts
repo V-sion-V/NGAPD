@@ -5,7 +5,9 @@ import type { Database } from "./client.js";
 export interface ResourceInvalidationRecord {
   cursor: string;
   outboxEventId: string;
-  projectId: string;
+  projectId: string | null;
+  audienceType: "user" | "project";
+  audienceId: string;
   resourceType: string;
   resourceId: string;
   eventType: string;
@@ -56,13 +58,14 @@ export class OutboxRepository {
           .select([
             "id",
             "project_id",
+            "audience_type",
+            "audience_id",
             "aggregate_type",
             "aggregate_id",
             "event_type",
             "created_at",
           ])
           .where("processed_at", "is", null)
-          .where("project_id", "is not", null)
           .where("available_at", "<=", now)
           .orderBy("available_at")
           .orderBy("created_at")
@@ -83,6 +86,8 @@ export class OutboxRepository {
           .values({
             outbox_event_id: outbox.id,
             project_id: outbox.project_id!,
+            audience_type: outbox.audience_type,
+            audience_id: outbox.audience_id,
             resource_type: outbox.aggregate_type,
             resource_id: outbox.aggregate_id,
             event_type: outbox.event_type,
@@ -141,7 +146,6 @@ export class OutboxRepository {
       .selectFrom("outbox_events")
       .select(({ fn }) => fn.countAll<string>().as("count"))
       .where("processed_at", "is", null)
-      .where("project_id", "is not", null)
       .executeTakeFirstOrThrow();
     return Number(row.count);
   }
@@ -167,22 +171,36 @@ export class EventRepository {
 
     const rows = await this.database
       .selectFrom("resource_invalidation_events as event")
-      .innerJoin("memberships as membership", (join) =>
+      .leftJoin("memberships as membership", (join) =>
         join
           .onRef("membership.project_id", "=", "event.project_id")
           .on("membership.user_id", "=", input.userId)
-          .on("membership.active", "=", true),
+          .on("membership.status", "=", "active"),
       )
       .select([
         "event.cursor",
         "event.outbox_event_id",
         "event.project_id",
+        "event.audience_type",
+        "event.audience_id",
         "event.resource_type",
         "event.resource_id",
         "event.event_type",
         "event.created_at",
       ])
       .where("event.cursor", ">", afterCursor)
+      .where((expression) =>
+        expression.or([
+          expression.and([
+            expression("event.audience_type", "=", "user"),
+            expression("event.audience_id", "=", input.userId),
+          ]),
+          expression.and([
+            expression("event.audience_type", "=", "project"),
+            expression("membership.id", "is not", null),
+          ]),
+        ]),
+      )
       .orderBy("event.cursor")
       .limit(Math.min(Math.max(input.limit ?? 100, 1), 500))
       .execute();
@@ -191,6 +209,8 @@ export class EventRepository {
       cursor: row.cursor,
       outboxEventId: row.outbox_event_id,
       projectId: row.project_id,
+      audienceType: row.audience_type,
+      audienceId: row.audience_id,
       resourceType: row.resource_type,
       resourceId: row.resource_id,
       eventType: row.event_type,

@@ -14,6 +14,8 @@ export interface CreateUserInput {
   loginName: string;
   normalizedLoginName: string;
   passwordHash: string;
+  displayName?: string;
+  defaultIntroduction?: string;
 }
 
 export interface CreateProjectInput {
@@ -22,6 +24,7 @@ export interface CreateProjectInput {
   workspaceId?: string;
   key: string;
   name: string;
+  description?: string;
   ownerUserId: string;
 }
 
@@ -72,6 +75,8 @@ export class FoundationRepository {
           login_name: input.loginName,
           normalized_login_name: input.normalizedLoginName,
           password_hash: input.passwordHash,
+          display_name: input.displayName ?? input.loginName,
+          default_introduction: input.defaultIntroduction ?? "",
         })
         .returning(["id", "login_name", "normalized_login_name", "active", "created_at"])
         .executeTakeFirstOrThrow();
@@ -93,6 +98,7 @@ export class FoundationRepository {
           id: projectId,
           project_key: input.key,
           name: input.name,
+          description: input.description ?? "",
           owner_membership_id: ownerMembershipId,
         })
         .returning(["id", "project_key", "name", "owner_membership_id"])
@@ -103,10 +109,31 @@ export class FoundationRepository {
           id: ownerMembershipId,
           project_id: projectId,
           user_id: input.ownerUserId,
-          role: "admin",
+          permission_level: "admin",
+          status: "active",
+          has_been_active: true,
         })
-        .returning(["id", "project_id", "user_id", "role", "active"])
+        .returning(["id", "project_id", "user_id", "permission_level", "status"])
         .executeTakeFirstOrThrow();
+      await sql`
+        insert into project_logical_roles (
+          id,
+          project_id,
+          source_template_id,
+          name,
+          capability
+        )
+        select
+          md5(${projectId}::text || ':' || templates.id)::uuid,
+          ${projectId}::uuid,
+          templates.id,
+          templates.title,
+          templates.description
+        from system_logical_role_templates templates
+        on conflict (project_id, source_template_id)
+          where source_template_id is not null
+          do nothing
+      `.execute(transaction);
       await transaction
         .insertInto("sibling_task_graph_scopes")
         .values({
@@ -124,7 +151,8 @@ export class FoundationRepository {
     id?: string;
     projectId: string;
     userId: string;
-    role: "admin" | "member";
+    permissionLevel: "admin" | "member";
+    status?: "pending" | "active" | "removed";
   }) {
     return this.database
       .insertInto("memberships")
@@ -132,14 +160,22 @@ export class FoundationRepository {
         id: input.id ?? randomUUID(),
         project_id: input.projectId,
         user_id: input.userId,
-        role: input.role,
+        permission_level: input.permissionLevel,
+        status: input.status ?? "active",
+        has_been_active: (input.status ?? "active") === "active",
       })
-      .returning(["id", "project_id", "user_id", "role", "active"])
+      .returning(["id", "project_id", "user_id", "permission_level", "status"])
       .executeTakeFirstOrThrow();
   }
 
   async createTaskWithWorkspace(input: CreateTaskInput) {
     return this.database.transaction().execute(async (transaction) => {
+      await transaction
+        .selectFrom("projects")
+        .select("id")
+        .where("id", "=", input.projectId)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
       await validateTaskReferences(transaction, input);
       const taskId = input.id ?? randomUUID();
       const workspaceId = input.workspaceId ?? randomUUID();
@@ -234,10 +270,15 @@ async function validateTaskReferences(
   if (input.explicitOwnerMembershipId) {
     const membership = await executor
       .selectFrom("memberships")
-      .select(["project_id", "active"])
+      .select(["project_id", "status"])
       .where("id", "=", input.explicitOwnerMembershipId)
+      .forUpdate()
       .executeTakeFirst();
-    if (!membership || !membership.active || membership.project_id !== input.projectId) {
+    if (
+      !membership ||
+      membership.status !== "active" ||
+      membership.project_id !== input.projectId
+    ) {
       throw new Error("TASK_OWNER_MEMBERSHIP_INVALID");
     }
   }

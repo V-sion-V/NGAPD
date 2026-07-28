@@ -10,7 +10,9 @@ export type EventCursor = Static<typeof EventCursorSchema>;
 export const ResourceInvalidationEventSchema = Type.Object(
   {
     cursor: EventCursorSchema,
-    projectId: Type.String({ format: "uuid" }),
+    projectId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    audienceType: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("project")])),
+    audienceId: Type.Optional(Type.String({ format: "uuid" })),
     resourceType: Type.String({ minLength: 1, maxLength: 80 }),
     resourceId: Type.String({ format: "uuid" }),
     eventType: Type.String({ minLength: 1, maxLength: 120 }),

@@ -1,12 +1,13 @@
+import type { MembershipPermissionLevel, MembershipStatus } from "./membership.js";
+
 export type AuthorizationWorkspaceScope = "user" | "project" | "task";
-export type MembershipRole = "admin" | "member";
 
 export interface AuthorizationMembership {
   id: string;
   userId: string;
   projectId: string;
-  role: MembershipRole;
-  active: boolean;
+  permissionLevel: MembershipPermissionLevel;
+  status: MembershipStatus;
 }
 
 export interface WorkspaceAuthorizationContext {
@@ -70,7 +71,7 @@ function activeProjectMembership(
   if (!actor.membership) {
     return deny("membership_required");
   }
-  if (!actor.membership.active) {
+  if (actor.membership.status !== "active") {
     return deny("membership_inactive");
   }
   if (!context.projectId || actor.membership.projectId !== context.projectId) {
@@ -114,7 +115,8 @@ export function resolveWorkspaceWriteEligibility(
   }
 
   if (context.scopeType === "project") {
-    return membership.role === "admin" || context.projectOwnerMembershipId === membership.id
+    return membership.permissionLevel === "admin" ||
+      context.projectOwnerMembershipId === membership.id
       ? { allowed: true, reason: "allowed" }
       : deny("project_write_requires_owner_or_admin");
   }
@@ -150,7 +152,7 @@ export function resolveTaskOperationAuthorization(
   if (!membership) {
     return { allowed: false, reason: "membership_required" };
   }
-  if (!membership.active) {
+  if (membership.status !== "active") {
     return { allowed: false, reason: "membership_inactive" };
   }
   if (

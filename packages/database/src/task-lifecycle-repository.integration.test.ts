@@ -62,7 +62,7 @@ async function addMember(projectId: string, label: string) {
   const membership = await foundation!.createMembership({
     projectId,
     userId: user.user.id,
-    role: "member",
+    permissionLevel: "member",
   });
   return { user, membership };
 }

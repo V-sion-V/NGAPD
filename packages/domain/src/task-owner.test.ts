@@ -6,7 +6,7 @@ import {
   validateTaskOwnership,
 } from "./task-owner.js";
 
-const memberships = [{ id: "membership-owner", projectId: "project-1", active: true }];
+const memberships = [{ id: "membership-owner", projectId: "project-1", status: "active" as const }];
 const tasks = [
   {
     id: "root",
@@ -33,7 +33,7 @@ describe("resolveEffectiveTaskOwner", () => {
 
   it("rejects inactive owners and cycles", () => {
     expect(
-      resolveEffectiveTaskOwner("child", tasks, [{ ...memberships[0]!, active: false }]),
+      resolveEffectiveTaskOwner("child", tasks, [{ ...memberships[0]!, status: "removed" }]),
     ).toEqual({ ok: false, reason: "owner_inactive" });
     expect(
       resolveEffectiveTaskOwner(
