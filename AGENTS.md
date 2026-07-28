@@ -9,9 +9,9 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 ## 当前开发阶段与目标
 
 - 已完成基线：三个前置原型、Workspace CLI 初始工作流、M0“领域基线和工程骨架”，以及 M1“项目、角色和成员”完整初始运行；M0 `change-0`、`change-1`、严格纠正运行 `change-2` 和 M1 P-001/P-002/P-003 均为 `completed/passed`。
-- 当前开发状态：M1 已交付正式 Schema version 2/`0008-m1-project-role-members`、完整 Repository/治理事务、应用服务、`/api/v1`/OpenAPI/审计/Outbox/SSE、中文 React Web、项目治理与可访问性闭环；最终 Node 24/pnpm 11/PostgreSQL 17/真实 Windows Workspace 根 `pnpm check` 为 273 tests passed、0 failed、7 platform-conditional skipped。Compose 与参考服务器 P95 因当前环境不可用按合同记为 `not_run`，附加 PostgreSQL 并发诊断通过，无开放 finding。
+- 当前开发状态：M1 已交付正式 Schema version 2/`0008-m1-project-role-members`、完整 Repository/治理事务、应用服务、`/api/v1`/OpenAPI/审计/Outbox/SSE、中文 React Web、项目治理与可访问性闭环；最终 Node 24/pnpm 11/PostgreSQL 17/真实 Windows Workspace 根 `pnpm check` 为 273 tests passed、0 failed、7 platform-conditional skipped。冻结 initial 中 Compose 与参考服务器 P95 因当时环境不可用按合同记为 `not_run`；2026-07-29 后续独立参考服务器补充验证已通过六服务 Compose 冒烟，常规读/写 P95 分别为 15.98/20.24 ms，附加 PostgreSQL 并发诊断通过，无开放 finding。
 - 后续路线图：M1 初始历史已由 `change-0.md` 与 `effective-requirements.md` 冻结；后续需求或行为变化必须使用 `$apply-feature-change` 创建连续 change run，不得改写 P-001/P-002/P-003 result 或 initial `change-0`。
-- 阶段依据：[M1 P-001 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-001-result.md)、[M1 P-002 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-002-result.md)、[M1 P-003 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-003-result.md)、[M1 初始实现记录](docs/requirements/m1-project-role-members/change-0.md)、[M1 当前有效需求](docs/requirements/m1-project-role-members/effective-requirements.md)、[M1 执行状态](docs/requirements/m1-project-role-members/execution/initial/execution-state.md)与[总体实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
+- 阶段依据：[M1 P-001 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-001-result.md)、[M1 P-002 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-002-result.md)、[M1 P-003 完成记录](docs/requirements/m1-project-role-members/execution/initial/phase-003-result.md)、[M1 初始实现记录](docs/requirements/m1-project-role-members/change-0.md)、[M1 当前有效需求](docs/requirements/m1-project-role-members/effective-requirements.md)、[M1 执行状态](docs/requirements/m1-project-role-members/execution/initial/execution-state.md)、[M1 参考服务器补充验证](docs/requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)与[总体实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
 
 ## 文档索引
 
@@ -29,6 +29,7 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 | `docs/10-mvp-non-functional-baseline.md`      | 负载、性能、恢复、安全、兼容和发布基线               |
 | `docs/11-logical-role-templates.json`         | 独立游戏团队的逻辑角色模板数据                       |
 | `docs/12-prototype-preparation.md`            | 原型结论、固定技术基线、开发入口与里程碑交接         |
+| `docs/validation/`                            | 跨里程碑可复用的活动验证方法与运行要求               |
 | `docs/requirements/`                          | schema-v3 功能工作流的需求、计划、执行证据和变更记录 |
 | `docs/requirements/agent-context-prototype/`  | Agent 上下文前置原型的封存记录                       |
 | `docs/requirements/m0-domain-baseline/`       | M0 领域基线与工程骨架的封存记录                      |
@@ -56,7 +57,8 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 | `prototypes/`                | 已封存的前置验证及证据；不是生产规则的权威实现              |
 | `deploy/`                    | Caddy 镜像和网关/Web 配置                                   |
 | `scripts/ci/`                | 工具链与数据库 CI 预检                                      |
-| `scripts/compose/`           | 六服务 Compose 发布栈冒烟测试                               |
+| `scripts/compose/`           | 本机及 Docker-only 参考服务器的六服务 Compose 发布栈验证    |
+| `scripts/performance/`       | 参考服务器真实业务接口延迟采样                              |
 | `.github/workflows/`         | CI 与发布栈门禁                                             |
 | `compose.yaml`、`Dockerfile` | 单机自托管发布栈及镜像构建                                  |
 
@@ -85,6 +87,7 @@ pnpm dev:workspace -- doctor --json
 pnpm db:migrate                 # 需要 DATABASE_URL
 pnpm ci                         # CI 等价门禁；需要 PostgreSQL 17 和数据库环境变量
 pnpm compose:smoke              # 需要可用的 Linux Docker/Compose 环境
+pnpm reference:p95 -- --help    # 参考服务器 M1 业务读写 P95；仅限隔离测试栈
 ```
 
 按包运行时使用 `pnpm --filter <workspace-name> <script>`。不要在没有明确目的和目标确认时运行数据库 reset、冲突覆盖、租约 takeover 或其他破坏性/高风险命令。

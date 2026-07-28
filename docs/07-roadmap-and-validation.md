@@ -4,7 +4,7 @@
 
 相关文档：[产品需求](01-product-requirements.md) · [系统架构](04-system-architecture.md) · [决策记录](08-decisions-and-open-issues.md)
 
-实现同步（2026-07-29）：三个前置原型、Workspace CLI 初始工作流、M0 和 M1 均已 completed/passed。M1 的共享领域/数据、完整后端、中文 Web 治理、活动正式文档与最终根门禁已经收口；Compose 与参考服务器 P95 因当前环境不可用按合同记为 `not_run`，附加并发诊断通过。
+实现同步（2026-07-29）：三个前置原型、Workspace CLI 初始工作流、M0 和 M1 均已 completed/passed。M1 的共享领域/数据、完整后端、中文 Web 治理、活动正式文档与最终根门禁已经收口；冻结 initial 中 Compose 与参考服务器 P95 因当时环境不可用按合同记为 `not_run`，附加并发诊断通过。随后独立执行的[参考服务器补充验证](requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)通过六服务 Compose 冒烟和 AC-028 常规读/写 P95，不改写 initial 历史。
 
 ## 1. 实施原则
 

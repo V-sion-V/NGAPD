@@ -17,6 +17,7 @@
     "ci": "pnpm ci:verify && pnpm db:migrate && pnpm db:migrate && pnpm check",
     "ci:verify": "node scripts/ci/verify-toolchain.mjs --require-database",
     "compose:smoke": "node scripts/compose/smoke.mjs",
+    "reference:p95": "node scripts/performance/m1-reference-p95.mjs",
     "db:migrate": "pnpm --filter @ngapd/database migrate",
     "dev": "pnpm build:packages && concurrently -n api,worker,web -c blue,magenta,green \"pnpm --filter @ngapd/api dev\" \"pnpm --filter @ngapd/worker dev\" \"pnpm --filter @ngapd/web dev\"",
     "dev:api": "pnpm build:packages && pnpm --filter @ngapd/api dev",
