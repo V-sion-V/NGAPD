@@ -1,10 +1,10 @@
 # 权限与安全模型
 
-文档状态：设计基线 0.6（M1 实现同步）
+文档状态：设计基线 0.7（M2 实现同步）
 
 相关文档：[领域模型](02-domain-model.md) · [Agent 设计](06-agent-integration.md) · [工作区设计](05-workspace-context-wiki.md)
 
-实现同步（2026-07-29）：M1 的会话、项目租户、Membership、Project Owner、Admin Mode、版本和服务端 `actions` 已由共享领域服务和 `/api/v1` 强制执行；React Web 只按权威资源呈现，不承担最终授权。
+实现同步（2026-07-30）：M2 的人类 Session actor、项目租户、有效 Task Owner、完整影响集合、Admin Mode、Task/Graph/Workspace 版本、评论生命周期和服务端 `actions` 已由共享领域/应用服务与 `/api/v1` 强制执行；公开接口不接受客户端伪造 actor/admin/Agent。
 
 ## 1. 权限模型总览
 

@@ -212,7 +212,7 @@ describeWithDatabase("M1 forward migration", () => {
     await migrateToLatest(database!);
     await expect(inspectDatabaseSchema(database!)).resolves.toMatchObject({
       status: "ready",
-      version: "2",
+      version: "3",
     });
 
     const [users, memberships, task, workspaces, audit, templateCount, projectRoleCount] =

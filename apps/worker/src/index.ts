@@ -35,6 +35,15 @@ await workerUtils.addJob(
     maxAttempts: 25,
   },
 );
+await workerUtils.addJob(
+  "task_due_reminders",
+  {},
+  {
+    jobKey: "ngapd-task-due-reminders",
+    jobKeyMode: "preserve_run_at",
+    maxAttempts: 25,
+  },
+);
 
 let runnerReady = true;
 const healthServer = await startWorkerHealthServer({

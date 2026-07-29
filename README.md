@@ -135,10 +135,10 @@ pnpm test
 pnpm check
 ```
 
-`pnpm ci` 还会校验锁定工具链并重复执行数据库迁移，用于在 PostgreSQL 17 和 CI 数据库环境变量均已就绪时复现 CI 门禁。
+`pnpm run ci` 还会校验锁定工具链并重复执行数据库迁移，用于在 PostgreSQL 17 和 CI 数据库环境变量均已就绪时复现 CI 门禁。必须保留 `run`，否则 pnpm 会把 `pnpm ci` 解释为自身的 clean-install 命令。
 
 ### Linux/Docker 部署
 
 复制并修改 `.env.example` 后，先用 `docker compose config` 检查配置，再用 `docker compose up --build -d` 启动 PostgreSQL、迁移任务、API、Worker、Web 和 Caddy 网关。该 Compose 配置面向 Linux 自托管服务器，macOS 日常开发不要求安装 Docker Desktop。
 
-完整发布栈冒烟验证使用 `pnpm compose:smoke`，需要可用的 Linux Docker/Compose 环境。Docker-only 参考服务器的隔离栈验证、正常内网业务 P95 采样和精确清理流程见[参考服务器 Compose 与 P95 验证方法](docs/validation/reference-server-compose-and-p95.md)；P95 客户端入口为 `pnpm reference:p95 -- --help`。部署前应修改数据库密码和 `NGAPD_SITE_ADDRESS`，且不得提交 `.env`。
+完整发布栈冒烟验证使用 `pnpm compose:smoke`，需要可用的 Linux Docker/Compose 环境。Docker-only 参考服务器的隔离栈验证、正常内网业务 P95 采样和精确清理流程见[参考服务器 Compose 与 P95 验证方法](docs/validation/reference-server-compose-and-p95.md)；M1 与 M2 P95 客户端入口分别为 `pnpm reference:p95 -- --help` 和 `pnpm reference:m2:p95 -- --help`。部署前应修改数据库密码和 `NGAPD_SITE_ADDRESS`，且不得提交 `.env`。

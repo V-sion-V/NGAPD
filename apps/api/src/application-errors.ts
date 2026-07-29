@@ -521,6 +521,108 @@ const TASK_ERROR_DESCRIPTORS = {
     message: "缺少任务 Workspace 状态",
     recovery: "请刷新任务与 Workspace 权威状态",
   },
+  task_field_invalid: {
+    statusCode: 422,
+    code: "TASK_FIELD_INVALID",
+    message: "Task fields are invalid",
+    recovery: "Refresh the Task and correct the rejected field values",
+  },
+  task_role_invalid: {
+    statusCode: 422,
+    code: "TASK_ROLE_INVALID",
+    message: "The selected logical role is not active in this project",
+    recovery: "Choose an active role from the current project",
+  },
+  task_blocked: {
+    statusCode: 409,
+    code: "TASK_COMPLETION_BLOCKED",
+    message: "The Task is blocked by a predecessor or manual blocker",
+    recovery: "Resolve all active blocking facts and retry with the current version",
+  },
+  invalid_status_transition: {
+    statusCode: 409,
+    code: "TASK_STATUS_INVALID",
+    message: "The requested Task status transition is not allowed",
+    recovery: "Refresh the Task and use the next legal status transition",
+  },
+  blocker_not_found: {
+    statusCode: 404,
+    code: "TASK_BLOCKER_ACTIVE",
+    message: "The active Task blocker was not found",
+    recovery: "Refresh the Task blocker list",
+  },
+  archive_requires_top_level: {
+    statusCode: 409,
+    code: "TASK_STATUS_INVALID",
+    message: "Only a top-level Task can be archived",
+    recovery: "Archive the containing top-level Task instead",
+  },
+  delete_requires_non_top_level: {
+    statusCode: 409,
+    code: "TASK_DELETE_CONFIRMATION_REQUIRED",
+    message: "A top-level Task cannot be deleted",
+    recovery: "Archive the top-level Task instead",
+  },
+  completed_descendant_exists: {
+    statusCode: 409,
+    code: "COMPLETED_TASK_FROZEN",
+    message: "The deletion subtree contains a completed Task",
+    recovery: "Use archive; completed Task history cannot be deleted",
+  },
+  completed_external_dependency_exists: {
+    statusCode: 409,
+    code: "COMPLETED_TASK_FROZEN",
+    message: "A completed external dependency endpoint protects this subtree",
+    recovery: "Preserve the subtree or review the completed dependency history",
+  },
+  task_key_confirmation_mismatch: {
+    statusCode: 409,
+    code: "TASK_DELETE_CONFIRMATION_REQUIRED",
+    message: "The full Task Key confirmation does not match",
+    recovery: "Repeat the impact preview and enter the exact current Task Key",
+  },
+  comment_not_found: {
+    statusCode: 404,
+    code: "TASK_COMMENT_NOT_FOUND",
+    message: "The Task comment was not found",
+    recovery: "Refresh the comment list",
+  },
+  comment_version_conflict: {
+    statusCode: 409,
+    code: "TASK_COMMENT_VERSION_CONFLICT",
+    message: "The Task comment has changed",
+    recovery: "Refresh the comment and retry from its current version",
+  },
+  comment_immutable: {
+    statusCode: 409,
+    code: "TASK_COMMENT_IMMUTABLE",
+    message: "This comment is append-only and cannot be changed",
+    recovery: "Post a new comment instead",
+  },
+  comment_attachment_forbidden: {
+    statusCode: 403,
+    code: "TASK_COMMENT_ATTACHMENT_FORBIDDEN",
+    message: "A comment attachment is not an authorized Workspace file reference",
+    recovery: "Use a readable committed Workspace file reference",
+  },
+  notification_not_found: {
+    statusCode: 404,
+    code: "TASK_NOTIFICATION_NOT_FOUND",
+    message: "The notification was not found",
+    recovery: "Refresh notifications",
+  },
+  notification_version_conflict: {
+    statusCode: 409,
+    code: "TASK_NOTIFICATION_VERSION_CONFLICT",
+    message: "The notification state has changed",
+    recovery: "Refresh notifications and retry",
+  },
+  notification_preference_critical: {
+    statusCode: 409,
+    code: "TASK_NOTIFICATION_PREFERENCE_REQUIRED",
+    message: "This critical notification category cannot be disabled",
+    recovery: "Keep the critical category enabled",
+  },
 } as const satisfies Record<string, ErrorDescriptor>;
 
 export class ApplicationError extends Error {

@@ -1,12 +1,12 @@
 # 产品需求说明
 
-文档状态：设计基线 0.6（M1 实现同步）
+文档状态：设计基线 0.7（M2 实现同步）
 
 目标读者：产品设计、客户端开发、服务端开发、Agent/工具开发、测试
 
 相关文档：[领域模型](02-domain-model.md) · [权限模型](03-permission-model.md) · [系统架构](04-system-architecture.md)
 
-实现同步（2026-07-29）：M1“项目、角色和成员”已交付正式 Schema version 2/`0008-m1-project-role-members`、完整 `/api/v1`/OpenAPI、审计/Outbox/SSE 和中文可访问 Web 闭环；本文件以下规则是后续里程碑继续复用的产品权威。
+实现同步（2026-07-30）：M2“任务管理闭环”已交付正式 Schema version 3/`0009-m2-task-management`、完整 Task `/api/v1`/OpenAPI、评论/活动/站内通知、审计/Outbox/Worker/SSE 和 Task Workspace 原子边界；正式平铺树状 Task UI 仍属于 M3。本文件以下规则是后续里程碑继续复用的产品权威。
 
 ## 1. 产品定义
 

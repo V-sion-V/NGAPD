@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   computeTaskImpactSet,
@@ -6,8 +6,10 @@ import {
   evaluateDependencyChange,
   evaluateDependencyRequestAcceptance,
   evaluateTaskParentChange,
+  evaluateTaskStatusTransition,
   resolveEffectiveTaskOwner,
   resolveTaskOperationAuthorization,
+  validateTaskFields,
   validateTaskFollow,
   validateTaskOwnership,
   type DependencyAction,
@@ -68,13 +70,22 @@ export interface FormalTaskRecord {
   taskSequence: number;
   taskKey: string;
   title: string;
+  content: string;
+  logicalRoleId: string | null;
+  dueAt: string | null;
+  labels: string[];
+  displayType: "normal" | "sprint" | "milestone";
   baseStatus: "not_started" | "in_progress" | "done";
   archived: boolean;
+  archivedAt: string | null;
   parentTaskId: string | null;
   parentGraphScopeId: string;
   explicitOwnerMembershipId: string | null;
+  createdByMembershipId: string;
   version: number;
   frozen: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TaskApplicationActor {
@@ -96,7 +107,9 @@ export type CreateFormalTaskResult =
         | "idempotency_conflict"
         | "project_not_found"
         | "task_key_invalid"
-        | "task_ownership_invalid";
+        | "task_ownership_invalid"
+        | "task_field_invalid"
+        | "task_role_invalid";
     };
 
 export type DependencyMutationResult =
@@ -164,7 +177,44 @@ export type AddTaskBlockerResult =
         | "task_archived"
         | "completed_task_frozen"
         | "task_version_conflict"
+        | "task_field_invalid"
         | "forbidden";
+    };
+
+export type TaskCommandResult =
+  | { ok: true; taskVersion: number }
+  | {
+      ok: false;
+      reason:
+        | "task_not_found"
+        | "task_archived"
+        | "completed_task_frozen"
+        | "task_version_conflict"
+        | "task_field_invalid"
+        | "task_role_invalid"
+        | "task_blocked"
+        | "invalid_status_transition"
+        | "blocker_not_found"
+        | "forbidden";
+    };
+
+export type DestructiveTaskResult =
+  | { ok: true; taskId: string; affectedTaskIds: string[] }
+  | {
+      ok: false;
+      reason:
+        | "task_not_found"
+        | "archive_requires_top_level"
+        | "delete_requires_non_top_level"
+        | "completed_task_frozen"
+        | "completed_descendant_exists"
+        | "completed_external_dependency_exists"
+        | "task_version_conflict"
+        | "graph_version_conflict"
+        | "impact_confirmation_stale"
+        | "task_key_confirmation_mismatch"
+        | "forbidden";
+      impact?: Extract<TaskImpactDecision, { ok: true }>;
     };
 
 export class TaskRepository {
@@ -183,6 +233,11 @@ export class TaskRepository {
     idempotencyKey: string;
     requestSha256: string;
     title: string;
+    content?: string;
+    logicalRoleId?: string | null;
+    dueAt?: string | null;
+    labels?: string[];
+    displayType?: "normal" | "sprint" | "milestone";
     parentTaskId: string | null;
     explicitOwnerMembershipId: string | null;
   }): Promise<CreateFormalTaskResult> {
@@ -214,6 +269,39 @@ export class TaskRepository {
         )
       ) {
         return { ok: false, reason: "task_ownership_invalid" };
+      }
+      const logicalRole =
+        input.logicalRoleId === undefined || input.logicalRoleId === null
+          ? undefined
+          : await transaction
+              .selectFrom("project_logical_roles")
+              .select(["id", "project_id", "status"])
+              .where("id", "=", input.logicalRoleId)
+              .executeTakeFirst();
+      const fields = validateTaskFields(
+        {
+          title: input.title,
+          content: input.content ?? "",
+          logicalRoleId: input.logicalRoleId ?? null,
+          dueAt: input.dueAt ?? null,
+          labels: input.labels ?? [],
+          displayType: input.displayType ?? "normal",
+        },
+        input.logicalRoleId
+          ? {
+              required: true,
+              exists: logicalRole !== undefined,
+              projectMatches: logicalRole?.project_id === input.projectId,
+              status: logicalRole?.status ?? null,
+            }
+          : { required: false },
+      );
+      if (!fields.ok) {
+        return {
+          ok: false,
+          reason:
+            fields.reason === "logical_role_invalid" ? "task_role_invalid" : "task_field_invalid",
+        };
       }
 
       const replay = await transaction
@@ -319,11 +407,17 @@ export class TaskRepository {
           project_id: input.projectId,
           task_sequence: String(nextSequence),
           task_key: taskKey.value,
-          title: input.title,
+          title: fields.fields.title,
+          content: fields.fields.content,
+          logical_role_id: fields.fields.logicalRoleId,
+          due_at: fields.fields.dueAt,
+          labels: sql`${JSON.stringify(fields.fields.labels)}::jsonb`,
+          display_type: fields.fields.displayType,
           base_status: "not_started",
           parent_task_id: input.parentTaskId,
           parent_graph_scope_id: parentScope.id,
           explicit_owner_membership_id: input.explicitOwnerMembershipId,
+          created_by_membership_id: input.actorMembershipId,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -620,6 +714,7 @@ export class TaskRepository {
   async acceptDependencyRequest(input: {
     requestId: string;
     acceptingMembershipId: string;
+    expectedGraphVersion: number;
     actorType?: "human" | "agent";
     now: Date;
   }): Promise<DependencyMutationResult> {
@@ -644,6 +739,17 @@ export class TaskRepository {
       const scope = await lockGraphScope(transaction, request.graph_scope_id);
       if (!scope) {
         return { ok: false, reason: "graph_scope_not_found" };
+      }
+      if (
+        Number(scope.graph_version) !== input.expectedGraphVersion ||
+        Number(request.expected_graph_version) !== input.expectedGraphVersion
+      ) {
+        await transaction
+          .updateTable("task_dependency_change_requests")
+          .set({ status: "stale", resolved_at: input.now, updated_at: input.now })
+          .where("id", "=", request.id)
+          .execute();
+        return { ok: false, reason: "request_stale" };
       }
       const facts = await loadProjectFacts(transaction, request.project_id);
       const snapshot = await loadGraphDomainSnapshot(transaction, facts, request.graph_scope_id);
@@ -1120,6 +1226,9 @@ export class TaskRepository {
     requestId?: string;
     reason: string;
   }): Promise<AddTaskBlockerResult> {
+    if (input.reason.trim().length < 1 || input.reason.length > 2_000) {
+      return { ok: false, reason: "task_field_invalid" };
+    }
     return this.database.transaction().execute(async (transaction) => {
       const task = await transaction
         .selectFrom("tasks")
@@ -1212,6 +1321,804 @@ export class TaskRepository {
     });
   }
 
+  async updateTask(input: {
+    taskId: string;
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
+    fields: Partial<{
+      title: string;
+      content: string;
+      logicalRoleId: string | null;
+      dueAt: string | null;
+      labels: string[];
+      displayType: "normal" | "sprint" | "milestone";
+    }>;
+    requestId: string;
+    now: Date;
+  }): Promise<TaskCommandResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const task = await transaction
+        .selectFrom("tasks")
+        .selectAll()
+        .where("id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!task) {
+        return { ok: false, reason: "task_not_found" };
+      }
+      if (task.archived) {
+        return { ok: false, reason: "task_archived" };
+      }
+      if (task.frozen || task.base_status === "done") {
+        return { ok: false, reason: "completed_task_frozen" };
+      }
+      if (Number(task.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
+      }
+      if (
+        !(await authorizeTaskOwners(transaction, {
+          projectId: task.project_id,
+          taskIds: [task.id],
+          actorMembershipId: input.actorMembershipId,
+          actorType: input.actorType,
+          adminModeActive: input.adminModeActive,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+        }))
+      ) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const nextRoleId =
+        input.fields.logicalRoleId === undefined
+          ? task.logical_role_id
+          : input.fields.logicalRoleId;
+      const logicalRole = nextRoleId
+        ? await transaction
+            .selectFrom("project_logical_roles")
+            .select(["id", "project_id", "status"])
+            .where("id", "=", nextRoleId)
+            .executeTakeFirst()
+        : undefined;
+      const fields = validateTaskFields(
+        {
+          title: input.fields.title ?? task.title,
+          content: input.fields.content ?? task.content,
+          logicalRoleId: nextRoleId,
+          dueAt:
+            input.fields.dueAt === undefined
+              ? (task.due_at?.toISOString() ?? null)
+              : input.fields.dueAt,
+          labels: input.fields.labels ?? task.labels,
+          displayType: input.fields.displayType ?? task.display_type,
+        },
+        nextRoleId
+          ? {
+              required: true,
+              exists: logicalRole !== undefined,
+              projectMatches: logicalRole?.project_id === task.project_id,
+              status: logicalRole?.status ?? null,
+            }
+          : { required: false },
+      );
+      if (!fields.ok) {
+        return {
+          ok: false,
+          reason:
+            fields.reason === "logical_role_invalid" ? "task_role_invalid" : "task_field_invalid",
+        };
+      }
+      const nextVersion = Number(task.version) + 1;
+      await transaction
+        .updateTable("tasks")
+        .set({
+          title: fields.fields.title,
+          content: fields.fields.content,
+          logical_role_id: fields.fields.logicalRoleId,
+          due_at: fields.fields.dueAt,
+          labels: sql`${JSON.stringify(fields.fields.labels)}::jsonb`,
+          display_type: fields.fields.displayType,
+          version: String(nextVersion),
+          updated_at: input.now,
+        })
+        .where("id", "=", task.id)
+        .executeTakeFirstOrThrow();
+      await writeTaskSuccessRecords(transaction, {
+        projectId: task.project_id,
+        actorMembershipId: input.actorMembershipId,
+        actorType: input.actorType,
+        targetId: task.id,
+        requestId: input.requestId,
+        action: "task.update",
+        reasonCode: "TASK_UPDATED",
+        taskVersionBefore: Number(task.version),
+        taskVersionAfter: nextVersion,
+        eventType: "task.updated",
+        payload: { taskId: task.id, taskVersion: nextVersion },
+      });
+      return { ok: true, taskVersion: nextVersion };
+    });
+  }
+
+  async changeStatus(input: {
+    taskId: string;
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
+    status: "not_started" | "in_progress";
+    requestId: string;
+    now: Date;
+  }): Promise<TaskCommandResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const task = await transaction
+        .selectFrom("tasks")
+        .select(["id", "project_id", "base_status", "archived", "frozen", "version"])
+        .where("id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!task) {
+        return { ok: false, reason: "task_not_found" };
+      }
+      if (task.archived) {
+        return { ok: false, reason: "task_archived" };
+      }
+      if (Number(task.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
+      }
+      const blocker = await transaction
+        .selectFrom("task_blockers")
+        .select("id")
+        .where("task_id", "=", task.id)
+        .where("resolved_at", "is", null)
+        .executeTakeFirst();
+      const predecessor = await transaction
+        .selectFrom("task_dependencies as dependency")
+        .innerJoin("tasks as predecessor", "predecessor.id", "dependency.predecessor_task_id")
+        .select("predecessor.id")
+        .where("dependency.successor_task_id", "=", task.id)
+        .where("dependency.enabled", "=", true)
+        .where("predecessor.archived", "=", false)
+        .where("predecessor.base_status", "!=", "done")
+        .executeTakeFirst();
+      const decision = evaluateTaskStatusTransition({
+        current: task.base_status,
+        next: input.status,
+        blocked: blocker !== undefined || predecessor !== undefined,
+      });
+      if (!decision.ok) {
+        return { ok: false, reason: decision.reason };
+      }
+      if (
+        !(await authorizeTaskOwners(transaction, {
+          projectId: task.project_id,
+          taskIds: [task.id],
+          actorMembershipId: input.actorMembershipId,
+          actorType: input.actorType,
+          adminModeActive: input.adminModeActive,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+        }))
+      ) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const nextVersion = Number(task.version) + 1;
+      await transaction
+        .updateTable("tasks")
+        .set({
+          base_status: decision.next,
+          version: String(nextVersion),
+          updated_at: input.now,
+        })
+        .where("id", "=", task.id)
+        .execute();
+      await writeTaskSuccessRecords(transaction, {
+        projectId: task.project_id,
+        actorMembershipId: input.actorMembershipId,
+        actorType: input.actorType,
+        targetId: task.id,
+        requestId: input.requestId,
+        action: "task.status.change",
+        reasonCode: "TASK_STATUS_CHANGED",
+        taskVersionBefore: Number(task.version),
+        taskVersionAfter: nextVersion,
+        eventType: "task.status.changed",
+        payload: { taskId: task.id, taskVersion: nextVersion, status: decision.next },
+      });
+      return { ok: true, taskVersion: nextVersion };
+    });
+  }
+
+  async resolveBlocker(input: {
+    taskId: string;
+    blockerId: string;
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
+    requestId: string;
+    now: Date;
+  }): Promise<TaskCommandResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const task = await transaction
+        .selectFrom("tasks")
+        .select(["id", "project_id", "base_status", "archived", "frozen", "version"])
+        .where("id", "=", input.taskId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!task) {
+        return { ok: false, reason: "task_not_found" };
+      }
+      if (task.archived) {
+        return { ok: false, reason: "task_archived" };
+      }
+      if (task.frozen || task.base_status === "done") {
+        return { ok: false, reason: "completed_task_frozen" };
+      }
+      if (Number(task.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
+      }
+      const blocker = await transaction
+        .selectFrom("task_blockers")
+        .select("id")
+        .where("id", "=", input.blockerId)
+        .where("task_id", "=", task.id)
+        .where("resolved_at", "is", null)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!blocker) {
+        return { ok: false, reason: "blocker_not_found" };
+      }
+      if (
+        !(await authorizeTaskOwners(transaction, {
+          projectId: task.project_id,
+          taskIds: [task.id],
+          actorMembershipId: input.actorMembershipId,
+          actorType: input.actorType,
+          adminModeActive: input.adminModeActive,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+        }))
+      ) {
+        return { ok: false, reason: "forbidden" };
+      }
+      await transaction
+        .updateTable("task_blockers")
+        .set({
+          resolved_by_membership_id: input.actorMembershipId,
+          resolved_at: input.now,
+        })
+        .where("id", "=", blocker.id)
+        .execute();
+      const nextVersion = Number(task.version) + 1;
+      await transaction
+        .updateTable("tasks")
+        .set({ version: String(nextVersion), updated_at: input.now })
+        .where("id", "=", task.id)
+        .execute();
+      await writeTaskSuccessRecords(transaction, {
+        projectId: task.project_id,
+        actorMembershipId: input.actorMembershipId,
+        actorType: input.actorType,
+        targetId: task.id,
+        requestId: input.requestId,
+        action: "task.blocker.resolve",
+        reasonCode: "TASK_BLOCKER_RESOLVED",
+        taskVersionBefore: Number(task.version),
+        taskVersionAfter: nextVersion,
+        eventType: "task.blocker.changed",
+        payload: { taskId: task.id, blockerId: blocker.id, taskVersion: nextVersion },
+      });
+      return { ok: true, taskVersion: nextVersion };
+    });
+  }
+
+  async rejectDependencyRequest(input: {
+    requestId: string;
+    rejectingMembershipId: string;
+    expectedGraphVersion: number;
+    actorType?: "human" | "agent";
+    now: Date;
+  }): Promise<DependencyMutationResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const request = await transaction
+        .selectFrom("task_dependency_change_requests")
+        .selectAll()
+        .where("id", "=", input.requestId)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!request || request.status !== "pending" || request.expires_at <= input.now) {
+        if (request?.status === "pending" && request.expires_at <= input.now) {
+          await transaction
+            .updateTable("task_dependency_change_requests")
+            .set({ status: "expired", resolved_at: input.now, updated_at: input.now })
+            .where("id", "=", request.id)
+            .execute();
+        }
+        return { ok: false, reason: "request_stale" };
+      }
+      const scope = await lockGraphScope(transaction, request.graph_scope_id);
+      if (!scope) {
+        return { ok: false, reason: "graph_scope_not_found" };
+      }
+      if (
+        Number(scope.graph_version) !== input.expectedGraphVersion ||
+        Number(request.expected_graph_version) !== input.expectedGraphVersion
+      ) {
+        await transaction
+          .updateTable("task_dependency_change_requests")
+          .set({ status: "stale", resolved_at: input.now, updated_at: input.now })
+          .where("id", "=", request.id)
+          .execute();
+        return { ok: false, reason: "request_stale" };
+      }
+      if (request.required_acceptance_by_membership_id !== input.rejectingMembershipId) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const actor = await transaction
+        .selectFrom("memberships")
+        .select("status")
+        .where("id", "=", input.rejectingMembershipId)
+        .where("project_id", "=", request.project_id)
+        .executeTakeFirst();
+      if (actor?.status !== "active") {
+        return { ok: false, reason: "forbidden" };
+      }
+      await transaction
+        .updateTable("task_dependency_change_requests")
+        .set({ status: "rejected", resolved_at: input.now, updated_at: input.now })
+        .where("id", "=", request.id)
+        .execute();
+      await writeTaskSuccessRecords(transaction, {
+        projectId: request.project_id,
+        actorMembershipId: input.rejectingMembershipId,
+        actorType: input.actorType ?? "human",
+        targetId: request.predecessor_task_id,
+        requestId: request.request_id,
+        action: "task.dependency.reject",
+        reasonCode: "TASK_DEPENDENCY_REJECTED",
+        taskVersionBefore: null,
+        taskVersionAfter: null,
+        eventType: "task.dependency.resolved",
+        payload: {
+          dependencyRequestId: request.id,
+          predecessorTaskId: request.predecessor_task_id,
+          successorTaskId: request.successor_task_id,
+          decision: "rejected",
+        },
+      });
+      return {
+        ok: true,
+        mode: "direct",
+        action: request.action,
+        graphVersion: Number(scope.graph_version),
+      };
+    });
+  }
+
+  async previewDestructiveImpact(input: {
+    taskId: string;
+    operation: "archive" | "delete" | "owner_change" | "cascade_reopen";
+  }): Promise<TaskImpactDecision> {
+    const task = await this.database
+      .selectFrom("tasks")
+      .select("project_id")
+      .where("id", "=", input.taskId)
+      .executeTakeFirst();
+    if (!task) {
+      return { ok: false, reason: "task_not_found", taskId: input.taskId };
+    }
+    return loadImpactDecision(this.database, task.project_id, input.operation, input.taskId);
+  }
+
+  async archiveTask(input: {
+    taskId: string;
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
+    expectedGraphVersion: number;
+    impactConfirmationToken: string;
+    requestId: string;
+    now: Date;
+  }): Promise<DestructiveTaskResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const location = await transaction
+        .selectFrom("tasks")
+        .select(["project_id", "parent_task_id"])
+        .where("id", "=", input.taskId)
+        .executeTakeFirst();
+      if (!location) {
+        return { ok: false, reason: "task_not_found" };
+      }
+      if (location.parent_task_id !== null) {
+        return { ok: false, reason: "archive_requires_top_level" };
+      }
+      await transaction
+        .selectFrom("projects")
+        .select("id")
+        .where("id", "=", location.project_id)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      const initial = await loadImpactDecision(
+        transaction,
+        location.project_id,
+        "archive",
+        input.taskId,
+      );
+      if (!initial.ok || initial.confirmationToken !== input.impactConfirmationToken) {
+        return {
+          ok: false,
+          reason: "impact_confirmation_stale",
+          ...(initial.ok ? { impact: initial } : {}),
+        };
+      }
+      const facts = await loadProjectFacts(transaction, location.project_id);
+      const affected = facts.tasks
+        .filter((task) => initial.impact.affectedTaskIds.includes(task.id))
+        .sort((left, right) => taskDepth(left.id, facts.tasks) - taskDepth(right.id, facts.tasks));
+      for (const task of affected) {
+        await transaction
+          .selectFrom("tasks")
+          .select("id")
+          .where("id", "=", task.id)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+      }
+      const current = await loadImpactDecision(
+        transaction,
+        location.project_id,
+        "archive",
+        input.taskId,
+      );
+      if (!current.ok || current.confirmationToken !== input.impactConfirmationToken) {
+        return {
+          ok: false,
+          reason: "impact_confirmation_stale",
+          ...(current.ok ? { impact: current } : {}),
+        };
+      }
+      const root = affected.find((task) => task.id === input.taskId)!;
+      if (Number(root.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
+      }
+      const scope = await lockGraphScope(transaction, root.parent_graph_scope_id);
+      if (!scope || Number(scope.graph_version) !== input.expectedGraphVersion) {
+        return { ok: false, reason: "graph_version_conflict" };
+      }
+      if (
+        !(await authorizeTaskOwners(transaction, {
+          projectId: location.project_id,
+          taskIds: current.impact.affectedTaskIds,
+          actorMembershipId: input.actorMembershipId,
+          actorType: input.actorType,
+          adminModeActive: input.adminModeActive,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+        }))
+      ) {
+        return { ok: false, reason: "forbidden" };
+      }
+      if (current.impact.dependencyIds.length > 0) {
+        await transaction
+          .updateTable("task_dependencies")
+          .set({ enabled: false })
+          .where("id", "in", current.impact.dependencyIds)
+          .where("enabled", "=", true)
+          .execute();
+      }
+      const workspaceRows = await transaction
+        .selectFrom("workspaces")
+        .select("id")
+        .where("scope_type", "=", "task")
+        .where("scope_id", "in", current.impact.affectedTaskIds)
+        .orderBy("id")
+        .forUpdate()
+        .execute();
+      if (workspaceRows.length > 0) {
+        await transaction
+          .updateTable("workspace_leases")
+          .set({
+            revoked_at: input.now,
+            revoke_reason: "task_archived",
+          })
+          .where(
+            "workspace_id",
+            "in",
+            workspaceRows.map((workspace) => workspace.id),
+          )
+          .where("revoked_at", "is", null)
+          .execute();
+        await transaction
+          .updateTable("workspaces")
+          .set({ lifecycle: "archived", updated_at: input.now })
+          .where(
+            "id",
+            "in",
+            workspaceRows.map((workspace) => workspace.id),
+          )
+          .execute();
+      }
+      for (const task of affected) {
+        await transaction
+          .updateTable("tasks")
+          .set({
+            archived: true,
+            archived_at: input.now,
+            version: String(Number(task.version) + 1),
+            updated_at: input.now,
+          })
+          .where("id", "=", task.id)
+          .execute();
+      }
+      await writeTaskSuccessRecords(transaction, {
+        projectId: location.project_id,
+        actorMembershipId: input.actorMembershipId,
+        actorType: input.actorType,
+        targetId: input.taskId,
+        requestId: input.requestId,
+        action: "task.archive",
+        reasonCode: "TASK_ARCHIVED",
+        taskVersionBefore: Number(root.version),
+        taskVersionAfter: Number(root.version) + 1,
+        eventType: "task.archived",
+        payload: { taskId: input.taskId, affectedTaskIds: current.impact.affectedTaskIds },
+      });
+      return {
+        ok: true,
+        taskId: input.taskId,
+        affectedTaskIds: current.impact.affectedTaskIds,
+      };
+    });
+  }
+
+  async deleteTask(input: {
+    taskId: string;
+    confirmTaskKey: string;
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+    expectedTaskVersion: number;
+    expectedGraphVersion: number;
+    impactConfirmationToken: string;
+    requestId: string;
+    now: Date;
+  }): Promise<DestructiveTaskResult> {
+    return this.database.transaction().execute(async (transaction) => {
+      const location = await transaction
+        .selectFrom("tasks")
+        .select(["project_id", "parent_task_id"])
+        .where("id", "=", input.taskId)
+        .executeTakeFirst();
+      if (!location) {
+        return { ok: false, reason: "task_not_found" };
+      }
+      if (location.parent_task_id === null) {
+        return { ok: false, reason: "delete_requires_non_top_level" };
+      }
+      await transaction
+        .selectFrom("projects")
+        .select("id")
+        .where("id", "=", location.project_id)
+        .forUpdate()
+        .executeTakeFirstOrThrow();
+      const initial = await loadImpactDecision(
+        transaction,
+        location.project_id,
+        "delete",
+        input.taskId,
+      );
+      if (!initial.ok || initial.confirmationToken !== input.impactConfirmationToken) {
+        return {
+          ok: false,
+          reason: "impact_confirmation_stale",
+          ...(initial.ok ? { impact: initial } : {}),
+        };
+      }
+      const facts = await loadProjectFacts(transaction, location.project_id);
+      const affected = facts.tasks
+        .filter((task) => initial.impact.affectedTaskIds.includes(task.id))
+        .sort((left, right) => taskDepth(right.id, facts.tasks) - taskDepth(left.id, facts.tasks));
+      for (const task of [...affected].reverse()) {
+        await transaction
+          .selectFrom("tasks")
+          .select("id")
+          .where("id", "=", task.id)
+          .forUpdate()
+          .executeTakeFirstOrThrow();
+      }
+      const current = await loadImpactDecision(
+        transaction,
+        location.project_id,
+        "delete",
+        input.taskId,
+      );
+      if (!current.ok || current.confirmationToken !== input.impactConfirmationToken) {
+        return {
+          ok: false,
+          reason: "impact_confirmation_stale",
+          ...(current.ok ? { impact: current } : {}),
+        };
+      }
+      const root = affected.find((task) => task.id === input.taskId)!;
+      const rootRecord = await transaction
+        .selectFrom("tasks")
+        .select(["task_key", "version", "parent_graph_scope_id"])
+        .where("id", "=", root.id)
+        .executeTakeFirstOrThrow();
+      if (rootRecord.task_key !== input.confirmTaskKey) {
+        return { ok: false, reason: "task_key_confirmation_mismatch" };
+      }
+      if (Number(rootRecord.version) !== input.expectedTaskVersion) {
+        return { ok: false, reason: "task_version_conflict" };
+      }
+      const scope = await lockGraphScope(transaction, rootRecord.parent_graph_scope_id);
+      if (!scope || Number(scope.graph_version) !== input.expectedGraphVersion) {
+        return { ok: false, reason: "graph_version_conflict" };
+      }
+      if (affected.some((task) => task.base_status === "done" || task.frozen)) {
+        return { ok: false, reason: "completed_descendant_exists" };
+      }
+      const affectedIds = new Set(current.impact.affectedTaskIds);
+      const externalCompleted =
+        current.impact.dependencyIds.length === 0
+          ? undefined
+          : await transaction
+              .selectFrom("task_dependencies as dependency")
+              .innerJoin("tasks as predecessor", "predecessor.id", "dependency.predecessor_task_id")
+              .innerJoin("tasks as successor", "successor.id", "dependency.successor_task_id")
+              .select("dependency.id")
+              .where("dependency.id", "in", current.impact.dependencyIds)
+              .where((expression) =>
+                expression.or([
+                  expression.and([
+                    expression("predecessor.id", "not in", [...affectedIds]),
+                    expression("predecessor.base_status", "=", "done"),
+                  ]),
+                  expression.and([
+                    expression("successor.id", "not in", [...affectedIds]),
+                    expression("successor.base_status", "=", "done"),
+                  ]),
+                ]),
+              )
+              .executeTakeFirst();
+      if (externalCompleted) {
+        return { ok: false, reason: "completed_external_dependency_exists" };
+      }
+      if (
+        !(await authorizeTaskOwners(transaction, {
+          projectId: location.project_id,
+          taskIds: current.impact.affectedTaskIds,
+          actorMembershipId: input.actorMembershipId,
+          actorType: input.actorType,
+          adminModeActive: input.adminModeActive,
+          adminSessionEnteredFromExplicitUserRequest:
+            input.adminSessionEnteredFromExplicitUserRequest,
+        }))
+      ) {
+        return { ok: false, reason: "forbidden" };
+      }
+      const owner = await resolveEffectiveTaskOwner(
+        input.taskId,
+        facts.tasks.map(mapOwnershipNode),
+        facts.memberships.map(mapOwnershipMembership),
+      );
+      const ownerMembership = owner.ok
+        ? facts.memberships.find((membership) => membership.id === owner.membershipId)
+        : undefined;
+      await transaction
+        .deleteFrom("task_dependency_change_requests")
+        .where((expression) =>
+          expression.or([
+            expression("predecessor_task_id", "in", current.impact.affectedTaskIds),
+            expression("successor_task_id", "in", current.impact.affectedTaskIds),
+          ]),
+        )
+        .execute();
+      if (current.impact.dependencyIds.length > 0) {
+        await transaction
+          .deleteFrom("task_dependencies")
+          .where("id", "in", current.impact.dependencyIds)
+          .execute();
+      }
+      await transaction
+        .deleteFrom("task_follows")
+        .where((expression) =>
+          expression.or([
+            expression("source_task_id", "in", current.impact.affectedTaskIds),
+            expression("target_task_id", "in", current.impact.affectedTaskIds),
+          ]),
+        )
+        .execute();
+      await transaction
+        .deleteFrom("task_blockers")
+        .where("task_id", "in", current.impact.affectedTaskIds)
+        .execute();
+      const workspaceRows = await transaction
+        .selectFrom("workspaces")
+        .select("id")
+        .where("scope_type", "=", "task")
+        .where("scope_id", "in", current.impact.affectedTaskIds)
+        .orderBy("id")
+        .forUpdate()
+        .execute();
+      if (workspaceRows.length > 0) {
+        await transaction
+          .updateTable("workspace_leases")
+          .set({ revoked_at: input.now, revoke_reason: "task_deleted" })
+          .where(
+            "workspace_id",
+            "in",
+            workspaceRows.map((workspace) => workspace.id),
+          )
+          .where("revoked_at", "is", null)
+          .execute();
+        await transaction
+          .updateTable("workspaces")
+          .set({ lifecycle: "deleted", updated_at: input.now })
+          .where(
+            "id",
+            "in",
+            workspaceRows.map((workspace) => workspace.id),
+          )
+          .execute();
+      }
+      const tombstoneRows = await transaction
+        .selectFrom("tasks")
+        .select(["id", "project_id", "task_sequence", "task_key"])
+        .where("id", "in", current.impact.affectedTaskIds)
+        .execute();
+      await transaction
+        .insertInto("task_key_tombstones")
+        .values(
+          tombstoneRows.map((task) => ({
+            project_id: task.project_id,
+            task_sequence: task.task_sequence,
+            task_key: task.task_key,
+            deleted_task_id: task.id,
+            deleted_by_membership_id: input.actorMembershipId,
+            deleted_at: input.now,
+          })),
+        )
+        .execute();
+      await sql`set constraints all deferred`.execute(transaction);
+      for (const task of affected) {
+        await transaction.deleteFrom("tasks").where("id", "=", task.id).execute();
+      }
+      await writeTaskSuccessRecords(transaction, {
+        projectId: location.project_id,
+        actorMembershipId: input.actorMembershipId,
+        actorType: input.actorType,
+        targetId: input.taskId,
+        requestId: input.requestId,
+        action: "task.delete",
+        reasonCode: "TASK_DELETED",
+        taskVersionBefore: Number(rootRecord.version),
+        taskVersionAfter: null,
+        eventType: "task.deleted",
+        payload: {
+          taskId: input.taskId,
+          taskKey: rootRecord.task_key,
+          affectedTaskIds: current.impact.affectedTaskIds,
+        },
+        ...(ownerMembership
+          ? { audienceType: "user" as const, audienceId: ownerMembership.userId }
+          : {}),
+      });
+      return {
+        ok: true,
+        taskId: input.taskId,
+        affectedTaskIds: current.impact.affectedTaskIds,
+      };
+    });
+  }
+
   private async findTaskWithExecutor(
     executor: DatabaseExecutor,
     taskId: string,
@@ -1239,6 +2146,8 @@ async function writeTaskSuccessRecords(
     taskVersionAfter: number | null;
     eventType: string;
     payload: Record<string, unknown>;
+    audienceType?: "user" | "project";
+    audienceId?: string;
   },
 ): Promise<void> {
   const actor = await transaction
@@ -1265,14 +2174,17 @@ async function writeTaskSuccessRecords(
     .insertInto("outbox_events")
     .values({
       id: randomUUID(),
-      project_id: input.projectId,
-      audience_type: "project",
-      audience_id: input.projectId,
+      project_id: input.audienceType === "user" ? null : input.projectId,
+      audience_type: input.audienceType ?? "project",
+      audience_id: input.audienceId ?? input.projectId,
       aggregate_type: "task",
       aggregate_id: input.targetId,
       event_type: input.eventType,
       request_id: input.requestId,
-      payload: input.payload,
+      payload:
+        input.audienceType === "user"
+          ? { ...input.payload, projectId: input.projectId }
+          : input.payload,
     })
     .onConflict((conflict) =>
       conflict.columns(["request_id", "event_type", "aggregate_id"]).doNothing(),
@@ -1461,13 +2373,83 @@ async function loadImpactDecision(
     predecessorTaskId: dependency.predecessor_task_id,
     successorTaskId: dependency.successor_task_id,
   }));
-  return computeTaskImpactSet({
+  const decision = computeTaskImpactSet({
     operation,
     targetTaskId: taskId,
     tasks,
     dependencies,
     ...options,
   });
+  return decision.ok
+    ? {
+        ...decision,
+        confirmationToken: createHash("sha256").update(decision.confirmationToken).digest("hex"),
+      }
+    : decision;
+}
+
+async function authorizeTaskOwners(
+  transaction: Transaction<DatabaseSchema>,
+  input: {
+    projectId: string;
+    taskIds: readonly string[];
+    actorMembershipId: string;
+    actorType: "human" | "agent";
+    adminModeActive: boolean;
+    adminSessionEnteredFromExplicitUserRequest: boolean;
+  },
+): Promise<boolean> {
+  const facts = await loadProjectFacts(transaction, input.projectId);
+  const owners = resolveProjectOwners(facts);
+  const actor = facts.memberships.find((membership) => membership.id === input.actorMembershipId);
+  if (!owners.ok || !actor) {
+    return false;
+  }
+  const affectedOwners = input.taskIds.map((taskId) => owners.ownerByTaskId.get(taskId));
+  if (affectedOwners.some((owner) => owner === undefined)) {
+    return false;
+  }
+  return resolveTaskOperationAuthorization(
+    {
+      serverProjectId: input.projectId,
+      targetProjectIds: input.taskIds.map(() => input.projectId),
+      affectedOwnerMembershipIds: affectedOwners as string[],
+      projectOwnerMembershipId: facts.project.ownerMembershipId,
+      projectRootOperation: false,
+      adminSessionActive: input.adminModeActive,
+      actorType: input.actorType,
+      adminSessionEnteredFromExplicitUserRequest: input.adminSessionEnteredFromExplicitUserRequest,
+      impactConfirmationRequired: false,
+      impactConfirmed: true,
+    },
+    {
+      userId: actor.userId,
+      active: actor.userActive,
+      membership: {
+        id: actor.id,
+        userId: actor.userId,
+        projectId: actor.projectId,
+        permissionLevel: actor.permissionLevel,
+        status: actor.status,
+      },
+    },
+  ).allowed;
+}
+
+function taskDepth(taskId: string, tasks: readonly ProjectTaskRow[]): number {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const visited = new Set<string>();
+  let depth = 0;
+  let current = byId.get(taskId);
+  while (current?.parent_task_id) {
+    if (visited.has(current.id)) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    visited.add(current.id);
+    depth += 1;
+    current = byId.get(current.parent_task_id);
+  }
+  return depth;
 }
 
 async function applyDependencyMutation(
@@ -1581,13 +2563,22 @@ function mapTask(task: {
   task_sequence: string;
   task_key: string;
   title: string;
+  content: string;
+  logical_role_id: string | null;
+  due_at: Date | null;
+  labels: string[];
+  display_type: "normal" | "sprint" | "milestone";
   base_status: "not_started" | "in_progress" | "done";
   archived: boolean;
+  archived_at: Date | null;
   parent_task_id: string | null;
   parent_graph_scope_id: string;
   explicit_owner_membership_id: string | null;
+  created_by_membership_id: string;
   version: string;
   frozen: boolean;
+  created_at: Date;
+  updated_at: Date;
 }): FormalTaskRecord {
   return {
     id: task.id,
@@ -1595,13 +2586,22 @@ function mapTask(task: {
     taskSequence: Number(task.task_sequence),
     taskKey: task.task_key,
     title: task.title,
+    content: task.content,
+    logicalRoleId: task.logical_role_id,
+    dueAt: task.due_at?.toISOString() ?? null,
+    labels: task.labels,
+    displayType: task.display_type,
     baseStatus: task.base_status,
     archived: task.archived,
+    archivedAt: task.archived_at?.toISOString() ?? null,
     parentTaskId: task.parent_task_id,
     parentGraphScopeId: task.parent_graph_scope_id,
     explicitOwnerMembershipId: task.explicit_owner_membership_id,
+    createdByMembershipId: task.created_by_membership_id,
     version: Number(task.version),
     frozen: task.frozen,
+    createdAt: task.created_at.toISOString(),
+    updatedAt: task.updated_at.toISOString(),
   };
 }
 

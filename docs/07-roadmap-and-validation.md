@@ -1,10 +1,10 @@
 # 实施路线与验收策略
 
-文档状态：设计基线 0.6（M1 completed/passed）
+文档状态：设计基线 0.7（M2 completed/passed）
 
 相关文档：[产品需求](01-product-requirements.md) · [系统架构](04-system-architecture.md) · [决策记录](08-decisions-and-open-issues.md)
 
-实现同步（2026-07-29）：三个前置原型、Workspace CLI 初始工作流、M0 和 M1 均已 completed/passed。M1 的共享领域/数据、完整后端、中文 Web 治理、活动正式文档与最终根门禁已经收口；冻结 initial 中 Compose 与参考服务器 P95 因当时环境不可用按合同记为 `not_run`，附加并发诊断通过。随后独立执行的[参考服务器补充验证](requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)通过六服务 Compose 冒烟和 AC-028 常规读/写 P95，不改写 initial 历史。
+实现同步（2026-07-30）：三个前置原型、Workspace CLI 初始工作流、M0、M1 和 M2 均已 completed/passed。M2 已交付正式 Schema version 3、完整服务端 Task 闭环、评论/活动/通知、Worker/SSE 与 Workspace 原子边界；最终根门禁 288 tests passed、参考服务器六服务硬化验证和全部 M2 P95 门槛通过，无开放 finding。M1 的独立[参考服务器补充验证](requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)保持为封存历史。
 
 ## 1. 实施原则
 
@@ -124,6 +124,8 @@
 验收门槛：管理员资格不等于自动启用管理员模式；逻辑角色不能授予权限。
 
 ### M2：任务管理闭环
+
+实现状态（2026-07-30）：唯一 initial P-001 与 `change-0` 已 completed/passed；正式 Schema 为 version 3/`0009-m2-task-management`，32 项 FR、18 项 core AC 和 2 项 supplemental AC 均通过。详见[M2 初始实现记录](requirements/m2-task-management/change-0.md)与[参考服务器验证](requirements/m2-task-management/validation/reference-server-2026-07-30.md)。
 
 交付：
 

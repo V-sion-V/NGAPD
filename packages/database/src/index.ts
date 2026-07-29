@@ -8,5 +8,8 @@ export * from "./project-role-repository.js";
 export * from "./schema-profile.js";
 export * from "./task-repository.js";
 export * from "./task-lifecycle-repository.js";
+export * from "./task-comment-repository.js";
+export * from "./task-query-repository.js";
+export * from "./task-projection-repository.js";
 export * from "./workspace-repository.js";
 export type * from "./types.js";

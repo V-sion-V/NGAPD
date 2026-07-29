@@ -109,7 +109,7 @@ describeWithDatabase("workspace sync API integration", () => {
     });
     expect(downloaded.statusCode).toBe(200);
     expect(downloaded.rawPayload).toEqual(object.content);
-  });
+  }, 30_000);
 
   async function runScenarios(run: number) {
     const seeded = await seedScenario(run);

@@ -39,6 +39,7 @@ export interface CreateTaskInput {
   title: string;
   parentTaskId: string | null;
   explicitOwnerMembershipId: string | null;
+  createdByMembershipId?: string;
 }
 
 export interface AuditEventInput {
@@ -170,9 +171,9 @@ export class FoundationRepository {
 
   async createTaskWithWorkspace(input: CreateTaskInput) {
     return this.database.transaction().execute(async (transaction) => {
-      await transaction
+      const lockedProject = await transaction
         .selectFrom("projects")
-        .select("id")
+        .select(["id", "owner_membership_id"])
         .where("id", "=", input.projectId)
         .forUpdate()
         .executeTakeFirstOrThrow();
@@ -211,6 +212,10 @@ export class FoundationRepository {
           parent_task_id: input.parentTaskId,
           parent_graph_scope_id: parentGraphScope.id,
           explicit_owner_membership_id: input.explicitOwnerMembershipId,
+          created_by_membership_id:
+            input.createdByMembershipId ??
+            input.explicitOwnerMembershipId ??
+            lockedProject.owner_membership_id,
         })
         .returning([
           "id",

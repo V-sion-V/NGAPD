@@ -1423,8 +1423,530 @@ const m1ProjectRoleMembersMigration: Migration = {
 
     await sql`
       update system_metadata
-      set value = ${FORMAL_SCHEMA_VERSION}, updated_at = now()
+      set value = '2', updated_at = now()
       where key = 'schema_profile_version'
+    `.execute(database);
+  },
+};
+
+const m2TaskManagementMigration: Migration = {
+  async up(database: Kysely<unknown>) {
+    await sql`
+      alter table tasks disable trigger tasks_update_guard;
+      alter table tasks rename column body to content;
+      alter table tasks rename column logical_role to legacy_logical_role;
+
+      alter table task_workspace_transition_snapshots
+        drop constraint if exists task_workspace_transition_snapshots_task_id_project_id_fkey;
+      alter table task_operation_idempotency
+        drop constraint if exists task_operation_idempotency_response_task_id_fkey,
+        add constraint task_operation_idempotency_response_task_id_fkey
+          foreign key (response_task_id) references tasks(id) on delete set null;
+
+      alter table tasks
+        add column logical_role_id uuid,
+        add column created_by_membership_id uuid,
+        add column archived_at timestamptz;
+
+      do $migration$
+      declare
+        unresolved_count bigint;
+      begin
+        select count(*)
+        into unresolved_count
+        from tasks
+        where legacy_logical_role is not null
+          and (
+            select count(*)
+            from project_logical_roles
+            where project_logical_roles.project_id = tasks.project_id
+              and project_logical_roles.name = tasks.legacy_logical_role
+          ) <> 1;
+
+        if unresolved_count <> 0 then
+          raise exception using
+            errcode = '23514',
+            message = 'M2_LOGICAL_ROLE_BACKFILL_REQUIRES_UNIQUE_PROJECT_ROLE',
+            detail = unresolved_count::text || ' task role values have zero or multiple exact matches';
+        end if;
+      end
+      $migration$;
+
+      update tasks
+      set logical_role_id = project_logical_roles.id
+      from project_logical_roles
+      where tasks.legacy_logical_role is not null
+        and project_logical_roles.project_id = tasks.project_id
+        and project_logical_roles.name = tasks.legacy_logical_role;
+
+      with recursive ownership as (
+        select
+          tasks.id as task_id,
+          tasks.id as current_task_id,
+          tasks.parent_task_id,
+          tasks.explicit_owner_membership_id,
+          0 as depth
+        from tasks
+        union all
+        select
+          ownership.task_id,
+          parent.id,
+          parent.parent_task_id,
+          parent.explicit_owner_membership_id,
+          ownership.depth + 1
+        from ownership
+        join tasks parent on parent.id = ownership.parent_task_id
+        where ownership.explicit_owner_membership_id is null
+          and ownership.depth < 1000
+      ),
+      resolved as (
+        select distinct on (task_id)
+          task_id,
+          explicit_owner_membership_id
+        from ownership
+        where explicit_owner_membership_id is not null
+        order by task_id, depth
+      )
+      update tasks
+      set created_by_membership_id = resolved.explicit_owner_membership_id
+      from resolved
+      where resolved.task_id = tasks.id;
+
+      update tasks
+      set
+        display_type = coalesce(display_type, 'normal'),
+        archived_at = case when archived then updated_at else null end;
+
+      set constraints all immediate;
+
+      alter table tasks
+        alter column display_type set default 'normal',
+        alter column display_type set not null,
+        alter column created_by_membership_id set not null,
+        add constraint tasks_content_length_check
+          check (char_length(content) <= 65536),
+        add constraint tasks_labels_array_check
+          check (jsonb_typeof(labels) = 'array'),
+        add constraint tasks_display_type_check
+          check (display_type in ('normal', 'sprint', 'milestone')),
+        add constraint tasks_archive_timestamp_check
+          check ((archived and archived_at is not null) or (not archived and archived_at is null)),
+        add constraint tasks_logical_role_project_fk
+          foreign key (logical_role_id, project_id)
+          references project_logical_roles(id, project_id),
+        add constraint tasks_creator_project_fk
+          foreign key (created_by_membership_id, project_id)
+          references memberships(id, project_id);
+
+      create or replace function ngapd_guard_task_update()
+      returns trigger
+      language plpgsql
+      as $function$
+      begin
+        if new.project_id is distinct from old.project_id
+          or new.task_sequence is distinct from old.task_sequence
+          or new.task_key is distinct from old.task_key
+          or new.created_by_membership_id is distinct from old.created_by_membership_id then
+          raise exception using errcode = '23514', message = 'TASK_KEY_IMMUTABLE';
+        end if;
+
+        if old.frozen then
+          if new.base_status = 'in_progress'
+            and not new.frozen
+            and new.title is not distinct from old.title
+            and new.content is not distinct from old.content
+            and new.due_at is not distinct from old.due_at
+            and new.legacy_logical_role is not distinct from old.legacy_logical_role
+            and new.logical_role_id is not distinct from old.logical_role_id
+            and new.labels is not distinct from old.labels
+            and new.display_type is not distinct from old.display_type
+            and new.explicit_owner_membership_id is not distinct from old.explicit_owner_membership_id
+            and new.parent_task_id is not distinct from old.parent_task_id
+            and new.parent_graph_scope_id is not distinct from old.parent_graph_scope_id
+            and new.archived is not distinct from old.archived
+            and new.archived_at is not distinct from old.archived_at then
+            return new;
+          end if;
+          if new.archived
+            and not old.archived
+            and new.archived_at is distinct from old.archived_at
+            and new.base_status is not distinct from old.base_status
+            and new.frozen is not distinct from old.frozen
+            and new.title is not distinct from old.title
+            and new.content is not distinct from old.content
+            and new.due_at is not distinct from old.due_at
+            and new.legacy_logical_role is not distinct from old.legacy_logical_role
+            and new.logical_role_id is not distinct from old.logical_role_id
+            and new.labels is not distinct from old.labels
+            and new.display_type is not distinct from old.display_type
+            and new.explicit_owner_membership_id is not distinct from old.explicit_owner_membership_id
+            and new.parent_task_id is not distinct from old.parent_task_id
+            and new.parent_graph_scope_id is not distinct from old.parent_graph_scope_id then
+            if old.parent_task_id is null or exists (
+              with recursive ancestors as (
+                select id, parent_task_id, archived
+                from tasks
+                where id = old.parent_task_id
+                union all
+                select parent.id, parent.parent_task_id, parent.archived
+                from tasks parent
+                join ancestors child on child.parent_task_id = parent.id
+              )
+              select 1 from ancestors where parent_task_id is null and archived
+            ) then
+              return new;
+            end if;
+          end if;
+          if new.title is distinct from old.title
+            or new.content is distinct from old.content
+            or new.due_at is distinct from old.due_at
+            or new.legacy_logical_role is distinct from old.legacy_logical_role
+            or new.logical_role_id is distinct from old.logical_role_id
+            or new.labels is distinct from old.labels
+            or new.display_type is distinct from old.display_type
+            or new.explicit_owner_membership_id is distinct from old.explicit_owner_membership_id
+            or new.parent_task_id is distinct from old.parent_task_id
+            or new.parent_graph_scope_id is distinct from old.parent_graph_scope_id
+            or new.base_status is distinct from old.base_status
+            or new.archived is distinct from old.archived
+            or new.archived_at is distinct from old.archived_at
+            or new.frozen is distinct from old.frozen then
+            raise exception using errcode = '23514', message = 'COMPLETED_TASK_FROZEN';
+          end if;
+        end if;
+        return new;
+      end
+      $function$;
+      alter table tasks enable trigger tasks_update_guard;
+
+      create or replace function ngapd_guard_dependency_mutation()
+      returns trigger
+      language plpgsql
+      as $function$
+      declare
+        predecessor_done boolean;
+        successor_done boolean;
+        creates_cycle boolean;
+      begin
+        if tg_op = 'DELETE' then
+          select frozen into predecessor_done from tasks where id = old.predecessor_task_id;
+          select frozen into successor_done from tasks where id = old.successor_task_id;
+        else
+          select frozen into predecessor_done from tasks where id = new.predecessor_task_id;
+          select frozen into successor_done from tasks where id = new.successor_task_id;
+        end if;
+        if (coalesce(predecessor_done, false) or coalesce(successor_done, false))
+          and not (
+            tg_op = 'UPDATE'
+            and old.enabled
+            and not new.enabled
+          ) then
+          raise exception using errcode = '23514', message = 'COMPLETED_TASK_FROZEN';
+        end if;
+        if tg_op <> 'DELETE' and new.enabled then
+          with recursive reachable(task_id) as (
+            select new.successor_task_id
+            union
+            select dependency.successor_task_id
+            from task_dependencies dependency
+            join reachable on dependency.predecessor_task_id = reachable.task_id
+            where dependency.enabled
+              and dependency.graph_scope_id = new.graph_scope_id
+              and dependency.id <> new.id
+          )
+          select exists(
+            select 1 from reachable where task_id = new.predecessor_task_id
+          ) into creates_cycle;
+          if creates_cycle then
+            raise exception using errcode = '23514', message = 'TASK_DEPENDENCY_CYCLE';
+          end if;
+        end if;
+        return case when tg_op = 'DELETE' then old else new end;
+      end
+      $function$;
+
+      create or replace function ngapd_check_task_workspace_consistency()
+      returns trigger
+      language plpgsql
+      as $function$
+      declare
+        task_id_value uuid;
+        task_done boolean;
+        workspace_lifecycle varchar(20);
+      begin
+        if tg_table_name = 'tasks' then
+          task_id_value := new.id;
+          task_done := new.base_status = 'done' and new.frozen;
+          select lifecycle into workspace_lifecycle
+          from workspaces
+          where scope_type = 'task' and scope_id = task_id_value;
+          if workspace_lifecycle is null then
+            raise exception using errcode = '23514', message = 'TASK_WORKSPACE_MISSING';
+          end if;
+        else
+          if new.scope_type <> 'task' then
+            return new;
+          end if;
+          task_id_value := new.scope_id;
+          workspace_lifecycle := new.lifecycle;
+          select base_status = 'done' and frozen into task_done
+          from tasks
+          where id = task_id_value;
+          if task_done is null then
+            if workspace_lifecycle = 'deleted' then
+              return new;
+            end if;
+            raise exception using errcode = '23514', message = 'TASK_NOT_FOUND';
+          end if;
+        end if;
+        if task_done and workspace_lifecycle not in ('frozen', 'archived') then
+          raise exception using errcode = '23514', message = 'TASK_WORKSPACE_STATE_MISMATCH';
+        end if;
+        if not task_done and workspace_lifecycle = 'frozen' then
+          raise exception using errcode = '23514', message = 'TASK_WORKSPACE_STATE_MISMATCH';
+        end if;
+        return new;
+      end
+      $function$;
+
+      create table task_key_tombstones (
+        project_id uuid not null references projects(id) on delete cascade,
+        task_sequence bigint not null check (task_sequence >= 1),
+        task_key varchar(32) not null,
+        deleted_task_id uuid not null,
+        deleted_by_membership_id uuid not null,
+        deleted_at timestamptz not null default now(),
+        primary key (project_id, task_sequence),
+        unique (task_key),
+        unique (deleted_task_id),
+        foreign key (deleted_by_membership_id, project_id)
+          references memberships(id, project_id),
+        check (task_key ~ '^[A-Z]{2,6}-[1-9][0-9]*$')
+      );
+
+      create table task_comments (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        task_id uuid not null,
+        author_membership_id uuid not null,
+        body text,
+        attachments jsonb not null default '[]'::jsonb,
+        version bigint not null default 1 check (version >= 1),
+        edited_at timestamptz,
+        deleted_at timestamptz,
+        hidden_at timestamptz,
+        hidden_by_membership_id uuid,
+        hidden_reason text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        unique (id, project_id),
+        foreign key (task_id, project_id)
+          references tasks(id, project_id)
+          on delete cascade,
+        foreign key (author_membership_id, project_id)
+          references memberships(id, project_id),
+        foreign key (hidden_by_membership_id, project_id)
+          references memberships(id, project_id),
+        check (jsonb_typeof(attachments) = 'array'),
+        check (
+          (deleted_at is null and body is not null and char_length(body) between 1 and 32768)
+          or
+          (deleted_at is not null and body is null and attachments = '[]'::jsonb)
+        ),
+        check (
+          (hidden_at is null and hidden_by_membership_id is null and hidden_reason is null)
+          or
+          (
+            hidden_at is not null
+            and hidden_by_membership_id is not null
+            and hidden_reason is not null
+            and char_length(hidden_reason) between 1 and 2000
+            and deleted_at is null
+          )
+        )
+      );
+      create index task_comments_task_cursor_idx
+        on task_comments(task_id, created_at, id);
+      create index task_comments_author_idx
+        on task_comments(author_membership_id, created_at, id);
+
+      create table task_activity_projection (
+        cursor bigserial primary key,
+        id uuid not null unique,
+        outbox_event_id uuid not null unique references outbox_events(id) on delete cascade,
+        project_id uuid not null references projects(id) on delete cascade,
+        task_id uuid not null,
+        event_type varchar(120) not null,
+        actor_user_id uuid references users(id),
+        resource_refs jsonb not null default '{}'::jsonb,
+        occurred_at timestamptz not null,
+        created_at timestamptz not null default now(),
+        check (jsonb_typeof(resource_refs) = 'object')
+      );
+      create index task_activity_project_cursor_idx
+        on task_activity_projection(project_id, cursor);
+      create index task_activity_task_cursor_idx
+        on task_activity_projection(task_id, cursor);
+
+      create table task_completion_readiness (
+        task_id uuid primary key,
+        project_id uuid not null,
+        ready boolean not null default false,
+        condition_fingerprint char(64),
+        version bigint not null default 1 check (version >= 1),
+        evaluated_at timestamptz not null default now(),
+        foreign key (task_id, project_id)
+          references tasks(id, project_id)
+          on delete cascade,
+        check (
+          (ready and condition_fingerprint ~ '^[0-9a-f]{64}$')
+          or (not ready and condition_fingerprint is null)
+        )
+      );
+      create index task_completion_readiness_project_idx
+        on task_completion_readiness(project_id, ready, task_id);
+
+      create table task_completion_ready_occurrences (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        task_id uuid not null,
+        owner_membership_id uuid not null,
+        condition_fingerprint char(64) not null
+          check (condition_fingerprint ~ '^[0-9a-f]{64}$'),
+        source_outbox_event_id uuid not null references outbox_events(id) on delete cascade,
+        created_at timestamptz not null default now(),
+        foreign key (task_id, project_id)
+          references tasks(id, project_id)
+          on delete cascade,
+        foreign key (owner_membership_id, project_id)
+          references memberships(id, project_id),
+        unique (task_id, condition_fingerprint)
+      );
+
+      create table task_notifications (
+        id uuid primary key,
+        project_id uuid not null references projects(id) on delete cascade,
+        recipient_user_id uuid not null references users(id) on delete cascade,
+        recipient_membership_id uuid,
+        task_id uuid,
+        event_type varchar(120) not null,
+        occurrence_key varchar(240) not null,
+        critical boolean not null default true,
+        resource_refs jsonb not null default '{}'::jsonb,
+        read_at timestamptz,
+        version bigint not null default 1 check (version >= 1),
+        source_outbox_event_id uuid references outbox_events(id) on delete cascade,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        foreign key (recipient_membership_id, project_id)
+          references memberships(id, project_id),
+        unique (recipient_user_id, occurrence_key),
+        check (jsonb_typeof(resource_refs) = 'object')
+      );
+      create index task_notifications_recipient_cursor_idx
+        on task_notifications(recipient_user_id, created_at, id);
+      create index task_notifications_unread_idx
+        on task_notifications(recipient_user_id, created_at, id)
+        where read_at is null;
+      create index task_notifications_project_task_idx
+        on task_notifications(project_id, task_id, created_at, id);
+
+      create table task_notification_preferences (
+        user_id uuid not null references users(id) on delete cascade,
+        event_type varchar(120) not null,
+        enabled boolean not null default true,
+        version bigint not null default 1 check (version >= 1),
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        primary key (user_id, event_type)
+      );
+
+      create table task_projection_events (
+        outbox_event_id uuid primary key references outbox_events(id) on delete cascade,
+        projected_at timestamptz not null default now()
+      );
+
+      alter table task_operation_idempotency
+        drop constraint task_operation_idempotency_operation_check,
+        add constraint task_operation_idempotency_operation_check check (
+          operation in (
+            'create_task',
+            'update_task',
+            'dependency_change',
+            'dependency_request_resolve',
+            'task_move',
+            'task_complete',
+            'task_reopen',
+            'task_owner_change',
+            'task_archive',
+            'task_delete',
+            'task_follow',
+            'task_blocker_add',
+            'task_blocker_resolve',
+            'task_status',
+            'comment_create',
+            'comment_update',
+            'comment_delete',
+            'comment_hide',
+            'notification_read',
+            'notification_preference'
+          )
+        );
+
+      update system_metadata
+      set value = '3', updated_at = now()
+      where key = 'schema_profile_version';
+    `.execute(database);
+  },
+  async down(database: Kysely<unknown>) {
+    await sql`
+      alter table task_operation_idempotency
+        drop constraint task_operation_idempotency_operation_check,
+        add constraint task_operation_idempotency_operation_check check (
+          operation in (
+            'create_task',
+            'dependency_change',
+            'task_move',
+            'task_complete',
+            'task_reopen',
+            'task_owner_change',
+            'task_archive',
+            'task_delete',
+            'task_follow'
+          )
+        );
+      drop table task_projection_events;
+      drop table task_notification_preferences;
+      drop table task_notifications;
+      drop table task_completion_ready_occurrences;
+      drop table task_completion_readiness;
+      drop table task_activity_projection;
+      drop table task_comments;
+      drop table task_key_tombstones;
+      alter table tasks
+        drop constraint tasks_creator_project_fk,
+        drop constraint tasks_logical_role_project_fk,
+        drop constraint tasks_archive_timestamp_check,
+        drop constraint tasks_display_type_check,
+        drop constraint tasks_labels_array_check,
+        drop constraint tasks_content_length_check,
+        alter column display_type drop not null,
+        alter column display_type drop default,
+        drop column archived_at,
+        drop column created_by_membership_id,
+        drop column logical_role_id;
+      alter table tasks rename column legacy_logical_role to logical_role;
+      alter table tasks rename column content to body;
+      alter table task_operation_idempotency
+        drop constraint task_operation_idempotency_response_task_id_fkey,
+        add constraint task_operation_idempotency_response_task_id_fkey
+          foreign key (response_task_id) references tasks(id);
+      alter table task_workspace_transition_snapshots
+        add constraint task_workspace_transition_snapshots_task_id_project_id_fkey
+          foreign key (task_id, project_id) references tasks(id, project_id);
+      update system_metadata
+      set value = '2', updated_at = now()
+      where key = 'schema_profile_version';
     `.execute(database);
   },
 };
@@ -1440,6 +1962,7 @@ export class StaticMigrationProvider implements MigrationProvider {
       "0006-task-workspace-lifecycle": taskWorkspaceLifecycleMigration,
       "0007-application-projections": applicationProjectionsMigration,
       "0008-m1-project-role-members": m1ProjectRoleMembersMigration,
+      "0009-m2-task-management": m2TaskManagementMigration,
     };
   }
 }

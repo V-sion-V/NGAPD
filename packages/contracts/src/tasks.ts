@@ -1,5 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+import { ProjectKeySchema } from "./projects.js";
+import { Sha256Schema } from "./workspaces.js";
+
 export const TaskStatusSchema = Type.Union([
   Type.Literal("not_started"),
   Type.Literal("in_progress"),
@@ -79,6 +82,13 @@ export const TaskDependencyChangeRequestSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TaskDependencyChangeRequestCollectionSchema = Type.Object(
+  {
+    requests: Type.Array(TaskDependencyChangeRequestSchema),
+  },
+  { additionalProperties: false },
+);
+
 export const TaskImpactSetSchema = Type.Object(
   {
     operation: Type.Union([
@@ -154,7 +164,7 @@ export const ReopenTaskCommandSchema = Type.Object(
 export const ChangeTaskOwnerCommandSchema = Type.Object(
   {
     taskId: Type.String({ format: "uuid" }),
-    nextOwnerMembershipId: Type.String({ format: "uuid" }),
+    nextOwnerMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
     expectedTaskVersion: Type.Integer({ minimum: 1 }),
     expectedWorkspaceSyncVersion: Type.Integer({ minimum: 0 }),
     hasUncommittedClientVersion: Type.Boolean(),
@@ -201,7 +211,333 @@ export const AddTaskBlockerCommandSchema = Type.Object(
   {
     taskId: Type.String({ format: "uuid" }),
     expectedTaskVersion: Type.Integer({ minimum: 1 }),
-    reason: Type.String({ minLength: 1, maxLength: 4_000 }),
+    reason: Type.String({ minLength: 1, maxLength: 2_000 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskLabelsSchema = Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
+  maxItems: 64,
+  uniqueItems: true,
+});
+
+export const TaskActionSchema = Type.Union([
+  Type.Literal("read"),
+  Type.Literal("update"),
+  Type.Literal("change_owner"),
+  Type.Literal("manage_dependency"),
+  Type.Literal("manage_follow"),
+  Type.Literal("manage_blocker"),
+  Type.Literal("change_status"),
+  Type.Literal("complete"),
+  Type.Literal("reopen"),
+  Type.Literal("move"),
+  Type.Literal("archive"),
+  Type.Literal("delete"),
+  Type.Literal("comment"),
+  Type.Literal("read_workspace"),
+  Type.Literal("write_workspace"),
+]);
+
+export const TaskOwnerResourceSchema = Type.Object(
+  {
+    membershipId: Type.String({ format: "uuid" }),
+    sourceTaskId: Type.String({ format: "uuid" }),
+    inherited: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskChildSummarySchema = Type.Object(
+  {
+    total: Type.Integer({ minimum: 0 }),
+    done: Type.Integer({ minimum: 0 }),
+    blocked: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskWorkspaceStateSchema = Type.Object(
+  {
+    id: Type.String({ format: "uuid" }),
+    lifecycle: Type.Union([
+      Type.Literal("active"),
+      Type.Literal("frozen"),
+      Type.Literal("archived"),
+      Type.Literal("deleted"),
+    ]),
+    workCycle: Type.Integer({ minimum: 1 }),
+    syncVersion: Type.Integer({ minimum: 0 }),
+    hasActiveWriteLease: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskBlockerResourceSchema = Type.Object(
+  {
+    id: Type.String({ format: "uuid" }),
+    reason: Type.String({ minLength: 1, maxLength: 2_000 }),
+    createdByMembershipId: Type.String({ format: "uuid" }),
+    resolvedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    resolvedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    createdAt: Type.String({ format: "date-time" }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskResourceSchema = Type.Object(
+  {
+    id: Type.String({ format: "uuid" }),
+    projectId: Type.String({ format: "uuid" }),
+    key: TaskKeySchema,
+    sequence: Type.Integer({ minimum: 1 }),
+    title: Type.String({ minLength: 1, maxLength: 240 }),
+    content: Type.String({ maxLength: 65_536 }),
+    logicalRoleId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    dueAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    labels: TaskLabelsSchema,
+    displayType: TaskDisplayTypeSchema,
+    parentTaskId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    explicitOwnerMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    effectiveOwner: TaskOwnerResourceSchema,
+    baseStatus: TaskStatusSchema,
+    effectiveStatus: TaskEffectiveStatusSchema,
+    archiveLifecycle: TaskArchiveLifecycleSchema,
+    archivedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    completionReady: Type.Boolean(),
+    childSummary: TaskChildSummarySchema,
+    graphVersion: Type.Integer({ minimum: 0 }),
+    version: Type.Integer({ minimum: 1 }),
+    workspace: TaskWorkspaceStateSchema,
+    follows: Type.Optional(Type.Array(Type.String({ format: "uuid" }), { uniqueItems: true })),
+    blockers: Type.Optional(Type.Array(TaskBlockerResourceSchema)),
+    createdByMembershipId: Type.String({ format: "uuid" }),
+    createdAt: Type.String({ format: "date-time" }),
+    updatedAt: Type.String({ format: "date-time" }),
+    actions: Type.Array(TaskActionSchema, { uniqueItems: true }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskListCursorSchema = Type.String({
+  pattern: "^[A-Z]{2,6}-[1-9][0-9]*$",
+  maxLength: 32,
+});
+
+export const TaskCollectionSchema = Type.Object(
+  {
+    tasks: Type.Array(TaskResourceSchema),
+    nextCursor: Type.Union([TaskListCursorSchema, Type.Null()]),
+    graph: SiblingTaskGraphSchema,
+    dependencies: Type.Array(TaskDependencySchema),
+  },
+  { additionalProperties: false },
+);
+
+export const ProjectTaskParamsSchema = Type.Object(
+  {
+    projectKey: ProjectKeySchema,
+    taskKey: TaskKeySchema,
+  },
+  { additionalProperties: false },
+);
+
+export const ProjectTasksParamsSchema = Type.Object(
+  {
+    projectKey: ProjectKeySchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TaskListQuerySchema = Type.Object(
+  {
+    cursor: Type.Optional(TaskListCursorSchema),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
+    parentTaskKey: Type.Optional(Type.Union([TaskKeySchema, Type.Literal("root")])),
+    lifecycle: Type.Optional(
+      Type.Union([Type.Literal("active"), Type.Literal("archived"), Type.Literal("all")]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskMutationHeadersSchema = Type.Object(
+  {
+    "idempotency-key": Type.String({ minLength: 8, maxLength: 128 }),
+  },
+  { additionalProperties: true },
+);
+
+export const CreateTaskRequestSchema = Type.Object(
+  {
+    parentTaskKey: Type.Union([TaskKeySchema, Type.Null()]),
+    explicitOwnerMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    title: Type.String({ minLength: 1, maxLength: 240 }),
+    content: Type.Optional(Type.String({ maxLength: 65_536 })),
+    logicalRoleId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+    dueAt: Type.Optional(Type.Union([Type.String({ format: "date-time" }), Type.Null()])),
+    labels: Type.Optional(TaskLabelsSchema),
+    displayType: Type.Optional(TaskDisplayTypeSchema),
+  },
+  { additionalProperties: false },
+);
+
+export const UpdateTaskRequestSchema = Type.Object(
+  {
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    title: Type.Optional(Type.String({ minLength: 1, maxLength: 240 })),
+    content: Type.Optional(Type.String({ maxLength: 65_536 })),
+    logicalRoleId: Type.Optional(Type.Union([Type.String({ format: "uuid" }), Type.Null()])),
+    dueAt: Type.Optional(Type.Union([Type.String({ format: "date-time" }), Type.Null()])),
+    labels: Type.Optional(TaskLabelsSchema),
+    displayType: Type.Optional(TaskDisplayTypeSchema),
+  },
+  { additionalProperties: false, minProperties: 2 },
+);
+
+export const TaskMutationResponseSchema = Type.Object(
+  {
+    task: TaskResourceSchema,
+    idempotentReplay: Type.Boolean(),
+    eventId: Type.String({ minLength: 1, maxLength: 128 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskDependencyMutationResponseSchema = Type.Object(
+  {
+    mode: Type.Union([Type.Literal("direct"), Type.Literal("request_required")]),
+    action: DependencyActionSchema,
+    graphVersion: Type.Integer({ minimum: 0 }),
+    requestId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    eventId: Type.String({ minLength: 1, maxLength: 128 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskDeletionResponseSchema = Type.Object(
+  {
+    deletedTaskId: Type.String({ format: "uuid" }),
+    affectedTaskIds: Type.Array(Type.String({ format: "uuid" }), { uniqueItems: true }),
+    eventId: Type.String({ minLength: 1, maxLength: 128 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskImpactResponseSchema = Type.Object(
+  {
+    impact: TaskImpactSetSchema,
+    confirmationToken: Sha256Schema,
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeTaskOwnerRequestSchema = Type.Object(
+  {
+    nextOwnerMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    expectedWorkspaceSyncVersion: Type.Integer({ minimum: 0 }),
+    hasUncommittedClientVersion: Type.Boolean(),
+    confirmedTaskIds: Type.Array(Type.String({ format: "uuid" }), { uniqueItems: true }),
+    expectedAffectedTaskVersions: Type.Record(
+      Type.String({ format: "uuid" }),
+      Type.Integer({ minimum: 1 }),
+    ),
+    expectedAffectedWorkspaceSyncVersions: Type.Record(
+      Type.String({ format: "uuid" }),
+      Type.Integer({ minimum: 0 }),
+    ),
+    uncommittedWorkspaceTaskIds: Type.Array(Type.String({ format: "uuid" }), {
+      uniqueItems: true,
+    }),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeTaskDependencyRequestSchema = Type.Object(
+  {
+    action: DependencyActionSchema,
+    predecessorTaskKey: TaskKeySchema,
+    successorTaskKey: TaskKeySchema,
+    expectedGraphVersion: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const ResolveTaskDependencyRequestSchema = Type.Object(
+  {
+    decision: Type.Union([Type.Literal("accept"), Type.Literal("reject")]),
+    expectedGraphVersion: Type.Integer({ minimum: 0 }),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeTaskFollowRequestSchema = Type.Object(
+  {
+    action: DependencyActionSchema,
+    targetTaskKey: TaskKeySchema,
+    impactConfirmationToken: Sha256Schema,
+  },
+  { additionalProperties: false },
+);
+
+export const AddTaskBlockerRequestSchema = Type.Object(
+  {
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    reason: Type.String({ minLength: 1, maxLength: 2_000 }),
+  },
+  { additionalProperties: false },
+);
+
+export const ResolveTaskBlockerRequestSchema = Type.Object(
+  {
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export const ChangeTaskStatusRequestSchema = Type.Object(
+  {
+    status: Type.Union([Type.Literal("not_started"), Type.Literal("in_progress")]),
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+
+export const CompleteTaskRequestSchema = Type.Omit(CompleteTaskCommandSchema, ["taskId"], {
+  additionalProperties: false,
+});
+
+export const ReopenTaskRequestSchema = Type.Omit(ReopenTaskCommandSchema, ["taskId"], {
+  additionalProperties: false,
+});
+
+export const MoveTaskRequestSchema = Type.Object(
+  {
+    targetParentTaskKey: Type.Union([TaskKeySchema, Type.Null()]),
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    expectedSourceGraphVersion: Type.Integer({ minimum: 0 }),
+    expectedTargetGraphVersion: Type.Integer({ minimum: 0 }),
+    impactConfirmationToken: Sha256Schema,
+  },
+  { additionalProperties: false },
+);
+
+export const ArchiveTaskRequestSchema = Type.Object(
+  {
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    expectedGraphVersion: Type.Integer({ minimum: 0 }),
+    impactConfirmationToken: Sha256Schema,
+  },
+  { additionalProperties: false },
+);
+
+export const DeleteTaskRequestSchema = Type.Object(
+  {
+    expectedTaskVersion: Type.Integer({ minimum: 1 }),
+    expectedGraphVersion: Type.Integer({ minimum: 0 }),
+    impactConfirmationToken: Sha256Schema,
+    confirmTaskKey: TaskKeySchema,
   },
   { additionalProperties: false },
 );
@@ -217,6 +553,9 @@ export type TaskSummary = Static<typeof TaskSummarySchema>;
 export type SiblingTaskGraph = Static<typeof SiblingTaskGraphSchema>;
 export type TaskDependency = Static<typeof TaskDependencySchema>;
 export type TaskDependencyChangeRequest = Static<typeof TaskDependencyChangeRequestSchema>;
+export type TaskDependencyChangeRequestCollection = Static<
+  typeof TaskDependencyChangeRequestCollectionSchema
+>;
 export type TaskImpactSet = Static<typeof TaskImpactSetSchema>;
 export type TaskActorType = Static<typeof TaskActorTypeSchema>;
 export type TaskCommandContext = Static<typeof TaskCommandContextSchema>;
@@ -226,3 +565,32 @@ export type ChangeTaskOwnerCommand = Static<typeof ChangeTaskOwnerCommandSchema>
 export type MoveTaskCommand = Static<typeof MoveTaskCommandSchema>;
 export type ChangeTaskFollowCommand = Static<typeof ChangeTaskFollowCommandSchema>;
 export type AddTaskBlockerCommand = Static<typeof AddTaskBlockerCommandSchema>;
+export type TaskLabels = Static<typeof TaskLabelsSchema>;
+export type TaskAction = Static<typeof TaskActionSchema>;
+export type TaskOwnerResource = Static<typeof TaskOwnerResourceSchema>;
+export type TaskChildSummary = Static<typeof TaskChildSummarySchema>;
+export type TaskWorkspaceState = Static<typeof TaskWorkspaceStateSchema>;
+export type TaskBlockerResource = Static<typeof TaskBlockerResourceSchema>;
+export type TaskResource = Static<typeof TaskResourceSchema>;
+export type TaskCollection = Static<typeof TaskCollectionSchema>;
+export type ProjectTaskParams = Static<typeof ProjectTaskParamsSchema>;
+export type ProjectTasksParams = Static<typeof ProjectTasksParamsSchema>;
+export type TaskListQuery = Static<typeof TaskListQuerySchema>;
+export type CreateTaskRequest = Static<typeof CreateTaskRequestSchema>;
+export type UpdateTaskRequest = Static<typeof UpdateTaskRequestSchema>;
+export type TaskMutationResponse = Static<typeof TaskMutationResponseSchema>;
+export type TaskDependencyMutationResponse = Static<typeof TaskDependencyMutationResponseSchema>;
+export type TaskDeletionResponse = Static<typeof TaskDeletionResponseSchema>;
+export type TaskImpactResponse = Static<typeof TaskImpactResponseSchema>;
+export type ChangeTaskOwnerRequest = Static<typeof ChangeTaskOwnerRequestSchema>;
+export type ChangeTaskDependencyRequest = Static<typeof ChangeTaskDependencyRequestSchema>;
+export type ResolveTaskDependencyRequest = Static<typeof ResolveTaskDependencyRequestSchema>;
+export type ChangeTaskFollowRequest = Static<typeof ChangeTaskFollowRequestSchema>;
+export type AddTaskBlockerRequest = Static<typeof AddTaskBlockerRequestSchema>;
+export type ResolveTaskBlockerRequest = Static<typeof ResolveTaskBlockerRequestSchema>;
+export type ChangeTaskStatusRequest = Static<typeof ChangeTaskStatusRequestSchema>;
+export type CompleteTaskRequest = Static<typeof CompleteTaskRequestSchema>;
+export type ReopenTaskRequest = Static<typeof ReopenTaskRequestSchema>;
+export type MoveTaskRequest = Static<typeof MoveTaskRequestSchema>;
+export type ArchiveTaskRequest = Static<typeof ArchiveTaskRequestSchema>;
+export type DeleteTaskRequest = Static<typeof DeleteTaskRequestSchema>;

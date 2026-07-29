@@ -3,8 +3,9 @@ import { sql, type Kysely } from "kysely";
 import type { DatabaseSchema } from "./types.js";
 
 export const FORMAL_SCHEMA_PROFILE = "m0-domain-baseline";
-export const FORMAL_SCHEMA_VERSION = "2";
-export const PREVIOUS_FORMAL_SCHEMA_VERSION = "1";
+export const FORMAL_SCHEMA_VERSION = "3";
+export const PREVIOUS_FORMAL_SCHEMA_VERSION = "2";
+export const LEGACY_FORMAL_SCHEMA_VERSION = "1";
 
 export const FORMAL_MIGRATION_NAMES = [
   "0001-system-metadata",
@@ -15,16 +16,21 @@ export const FORMAL_MIGRATION_NAMES = [
   "0006-task-workspace-lifecycle",
   "0007-application-projections",
   "0008-m1-project-role-members",
+  "0009-m2-task-management",
 ] as const;
 
-export const PREVIOUS_FORMAL_MIGRATION_NAMES = FORMAL_MIGRATION_NAMES.slice(0, 7);
+export const PREVIOUS_FORMAL_MIGRATION_NAMES = FORMAL_MIGRATION_NAMES.slice(0, 8);
+export const LEGACY_FORMAL_MIGRATION_NAMES = FORMAL_MIGRATION_NAMES.slice(0, 7);
 
 export type DatabaseSchemaStatus =
   | { status: "empty"; appliedMigrations: [] }
   | {
       status: "ready" | "behind";
       profile: typeof FORMAL_SCHEMA_PROFILE;
-      version: typeof FORMAL_SCHEMA_VERSION | typeof PREVIOUS_FORMAL_SCHEMA_VERSION;
+      version:
+        | typeof FORMAL_SCHEMA_VERSION
+        | typeof PREVIOUS_FORMAL_SCHEMA_VERSION
+        | typeof LEGACY_FORMAL_SCHEMA_VERSION;
       appliedMigrations: string[];
       expectedMigration: string;
     }
@@ -132,14 +138,18 @@ export async function inspectDatabaseSchema(
   }
 
   const expected: string[] = [...FORMAL_MIGRATION_NAMES];
-  if (version === PREVIOUS_FORMAL_SCHEMA_VERSION) {
-    const isCompletePreviousBaseline =
-      appliedMigrations.length === PREVIOUS_FORMAL_MIGRATION_NAMES.length &&
-      appliedMigrations.every((name, index) => PREVIOUS_FORMAL_MIGRATION_NAMES[index] === name);
-    if (!isCompletePreviousBaseline) {
+  if (version === LEGACY_FORMAL_SCHEMA_VERSION || version === PREVIOUS_FORMAL_SCHEMA_VERSION) {
+    const recognizedHistoricalBaseline =
+      version === LEGACY_FORMAL_SCHEMA_VERSION
+        ? LEGACY_FORMAL_MIGRATION_NAMES
+        : PREVIOUS_FORMAL_MIGRATION_NAMES;
+    const isCompleteHistoricalBaseline =
+      appliedMigrations.length === recognizedHistoricalBaseline.length &&
+      appliedMigrations.every((name, index) => recognizedHistoricalBaseline[index] === name);
+    if (!isCompleteHistoricalBaseline) {
       return {
         status: "unknown",
-        reason: "version 1 is recognized only with the complete 0001-0007 formal baseline",
+        reason: `version ${version} is recognized only with its complete formal migration baseline`,
         appliedMigrations,
         profile,
         version,
@@ -150,7 +160,7 @@ export async function inspectDatabaseSchema(
       profile,
       version,
       appliedMigrations,
-      expectedMigration: expected.at(-1)!,
+      expectedMigration: expected[appliedMigrations.length]!,
     };
   }
   if (version !== FORMAL_SCHEMA_VERSION) {
@@ -180,7 +190,7 @@ export async function inspectDatabaseSchema(
     profile,
     version,
     appliedMigrations,
-    expectedMigration: expected.at(-1)!,
+    expectedMigration: expected[appliedMigrations.length] ?? expected.at(-1)!,
   };
 }
 

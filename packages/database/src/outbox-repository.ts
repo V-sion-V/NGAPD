@@ -1,6 +1,7 @@
 import { sql } from "kysely";
 
 import type { Database } from "./client.js";
+import { projectTaskOutboxEvent } from "./task-projection-repository.js";
 
 export interface ResourceInvalidationRecord {
   cursor: string;
@@ -63,6 +64,8 @@ export class OutboxRepository {
             "aggregate_type",
             "aggregate_id",
             "event_type",
+            "request_id",
+            "payload",
             "created_at",
           ])
           .where("processed_at", "is", null)
@@ -80,6 +83,18 @@ export class OutboxRepository {
         }
         selectedId = outbox.id;
         await options.beforeProjection?.(outbox.id);
+        await projectTaskOutboxEvent(transaction, {
+          id: outbox.id,
+          projectId: outbox.project_id,
+          audienceType: outbox.audience_type,
+          audienceId: outbox.audience_id,
+          aggregateType: outbox.aggregate_type,
+          aggregateId: outbox.aggregate_id,
+          eventType: outbox.event_type,
+          requestId: outbox.request_id,
+          payload: outbox.payload,
+          createdAt: outbox.created_at,
+        });
 
         const inserted = await transaction
           .insertInto("resource_invalidation_events")

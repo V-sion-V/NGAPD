@@ -514,6 +514,65 @@ describeWithDatabase("Task and Workspace lifecycle PostgreSQL integration", () =
     expect(Number(activeLease.count)).toBe(0);
   });
 
+  it("lets a non-top-level explicit Owner clear itself back to the nearest ancestor", async () => {
+    const seeded = await seedTask("OWNCLR", "owner-clear");
+    const childOwner = await addMember(seeded.project.project.id, "owner-clear-child");
+    const child = await taskRepository!.createTask({
+      projectId: seeded.project.project.id,
+      actorMembershipId: seeded.project.ownerMembership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      idempotencyKey: "owner-clear-child-create",
+      requestSha256: hash("owner-clear-child-create"),
+      title: "Explicit child",
+      parentTaskId: seeded.task.id,
+      explicitOwnerMembershipId: childOwner.membership.id,
+    });
+    expect(child).toMatchObject({ ok: true });
+    if (!child.ok) {
+      throw new Error("expected child creation");
+    }
+    await expect(
+      lifecycle!.changeOwner({
+        taskId: child.task.id,
+        nextOwnerMembershipId: null,
+        expectedTaskVersion: 1,
+        expectedWorkspaceSyncVersion: 0,
+        hasUncommittedClientVersion: false,
+        impactConfirmed: true,
+        confirmedTaskIds: [child.task.id],
+        expectedAffectedTaskVersions: { [child.task.id]: 1 },
+        expectedAffectedWorkspaceSyncVersions: { [child.task.id]: 0 },
+        uncommittedWorkspaceTaskIds: [],
+        actorMembershipId: childOwner.membership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "owner-clear-success",
+        idempotencyKey: "owner-clear-success",
+        requestSha256: hash("owner-clear-success"),
+        now: new Date("2026-07-30T00:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      taskVersion: 2,
+      ownerMembershipId: seeded.project.ownerMembership.id,
+    });
+    await expect(
+      database!
+        .selectFrom("tasks")
+        .select(["explicit_owner_membership_id", "version"])
+        .where("id", "=", child.task.id)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({ explicit_owner_membership_id: null, version: "2" });
+    await expect(taskRepository!.resolveEffectiveOwner(child.task.id)).resolves.toMatchObject({
+      ok: true,
+      membershipId: seeded.project.ownerMembership.id,
+      sourceTaskId: seeded.task.id,
+    });
+  });
+
   it("atomically coordinates inherited descendant Workspaces on Owner change", async () => {
     const seeded = await seedTask("TROWN", "owner-change-tree");
     const nextOwner = await addMember(seeded.project.project.id, "owner-change-tree-next");

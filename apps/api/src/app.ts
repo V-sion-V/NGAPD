@@ -6,7 +6,10 @@ import type { ObjectStore } from "@ngapd/object-store";
 import Fastify, { type FastifyInstance } from "fastify";
 
 import { registerAdminModeRoutes } from "./modules/authorization-audit/routes.js";
-import { AdminModeService } from "./modules/authorization-audit/service.js";
+import {
+  AdminModeService,
+  AuthorizationAuditService,
+} from "./modules/authorization-audit/service.js";
 import { ApplicationError } from "./modules/identity/errors.js";
 import { registerEventRoutes } from "./modules/events/routes.js";
 import { EventService } from "./modules/events/service.js";
@@ -16,6 +19,8 @@ import { registerProjectsMembershipRoutes } from "./modules/projects-membership/
 import { ProjectsMembershipService } from "./modules/projects-membership/service.js";
 import { registerRoleRoutes } from "./modules/roles/routes.js";
 import { RolesService } from "./modules/roles/service.js";
+import { registerTaskRoutes } from "./modules/tasks/routes.js";
+import { TaskApplicationService } from "./modules/tasks/service.js";
 import { registerWorkspaceRoutes } from "./modules/workspaces/routes.js";
 import { WorkspaceService } from "./modules/workspaces/service.js";
 
@@ -142,6 +147,13 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     await registerAdminModeRoutes(app, {
       identity,
       service: new AdminModeService(options.database),
+      publicOrigin,
+      now,
+    });
+    await registerTaskRoutes(app, {
+      identity,
+      service: new TaskApplicationService(options.database),
+      authorization: new AuthorizationAuditService(options.database),
       publicOrigin,
       now,
     });

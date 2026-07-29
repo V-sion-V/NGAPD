@@ -1,10 +1,10 @@
 # 决策记录与待定事项
 
-文档状态：设计基线 0.6（M1 实现同步）
+文档状态：设计基线 0.7（M2 实现同步）
 
 本文件记录当前文档采用的产品决策。未决事项按表中最晚阶段确认。核心技术 ADR 和 MVP 轻量非功能基线已分别记录在[技术架构决策](09-technical-architecture-decisions.md)和[MVP 非功能基线](10-mvp-non-functional-baseline.md)中。
 
-实现同步（2026-07-29）：D-085/D-086 已进入正式 Schema version 2/`0008-m1-project-role-members`、共享领域/Repository、`/api/v1` 和 Web 治理闭环；旧 D-054 Task 部分与多字段角色解释不得再作为生产规则。
+实现同步（2026-07-30）：M2 已把既定 Task/Graph/Owner/Lifecycle/Workspace、评论和通知决策交付到正式 Schema version 3/`0009-m2-task-management`、共享领域/Repository、公共 `/api/v1`/OpenAPI 和 Worker/SSE 闭环；旧 D-054 Task 部分与多字段角色解释不得再作为生产规则。
 
 ## 1. 已确认决策
 

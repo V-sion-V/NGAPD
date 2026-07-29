@@ -28,6 +28,10 @@
 		reverse_proxy api:3000
 	}
 
+	handle /docs* {
+		reverse_proxy api:3000
+	}
+
 	handle {
 		reverse_proxy web:8080
 	}

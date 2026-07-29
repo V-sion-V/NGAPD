@@ -15,14 +15,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { NodeWorkspaceFileAdapter } from "./filesystem.js";
 import { NodeWorkspaceControlAdapter, NodeWorkspaceRegistryAdapter } from "./local-state.js";
 
-const taskRoot = String.raw`C:\tmp\ngapd-workspace-sync-p004-t001`;
+const taskRoot = join(process.cwd(), ".tmp", "ngapd-workspace-sync-p004-t001");
 const describeOnWindows = process.platform === "win32" ? describe : describe.skip;
 let ownsTaskRoot = false;
 
 describeOnWindows("Node/NTFS Workspace adapters", () => {
   beforeAll(async () => {
     await expect(lstat(taskRoot)).rejects.toMatchObject({ code: "ENOENT" });
-    await mkdir(taskRoot);
+    await mkdir(taskRoot, { recursive: true });
     ownsTaskRoot = true;
   });
 

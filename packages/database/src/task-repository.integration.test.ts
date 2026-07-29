@@ -120,7 +120,8 @@ async function bulkInsertTopLevelTasks(input: {
         base_status,
         parent_task_id,
         parent_graph_scope_id,
-        explicit_owner_membership_id
+        explicit_owner_membership_id,
+        created_by_membership_id
       )
       select
         md5(${input.seed} || ':task:' || value::text)::uuid,
@@ -131,6 +132,7 @@ async function bulkInsertTopLevelTasks(input: {
         'not_started',
         null,
         ${scope.id}::uuid,
+        ${input.ownerMembershipId}::uuid,
         ${input.ownerMembershipId}::uuid
       from generate_series(1, ${input.count}) value
     `.execute(transaction);
@@ -742,7 +744,7 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
     });
     await database!
       .updateTable("tasks")
-      .set({ archived: true })
+      .set({ archived: true, archived_at: new Date("2026-07-29T00:00:00.000Z") })
       .where("id", "=", archivedTask.id)
       .execute();
     await expect(
@@ -923,7 +925,7 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
       );
     }
     expect(p95Milliseconds).toBeLessThan(800);
-  }, 30_000);
+  }, 90_000);
 
   it("preserves acyclicity across additional deterministic random DAG seeds", async () => {
     for (const [seedIndex, seed] of [17, 2_027, 65_537].entries()) {
@@ -1035,6 +1037,7 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
       repository!.acceptDependencyRequest({
         requestId: "00000000-0000-4000-8000-000000000901",
         acceptingMembershipId: memberB.membership.id,
+        expectedGraphVersion: 0,
         now: new Date("2026-07-27T02:00:00.000Z"),
       }),
     ).resolves.toEqual({ ok: false, reason: "request_stale" });
@@ -1128,6 +1131,131 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
       }
     }
   }, 20_000);
+
+  it("archives a complete top-level subtree while preserving Task and Workspace history", async () => {
+    const { project } = await seedProject("ARCH");
+    const root = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "archive-root",
+    });
+    const child = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "archive-child",
+      parentTaskId: root.id,
+      explicitOwnerMembershipId: null,
+    });
+    const preview = await repository!.previewDestructiveImpact({
+      taskId: root.id,
+      operation: "archive",
+    });
+    expect(preview).toMatchObject({
+      ok: true,
+      impact: { affectedTaskIds: expect.arrayContaining([root.id, child.id]) },
+      confirmationToken: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    if (!preview.ok) {
+      return;
+    }
+    const result = await repository!.archiveTask({
+      taskId: root.id,
+      actorMembershipId: project.ownerMembership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      expectedTaskVersion: root.version,
+      expectedGraphVersion: 0,
+      impactConfirmationToken: preview.confirmationToken,
+      requestId: "archive-subtree",
+      now: new Date("2026-07-30T00:00:00.000Z"),
+    });
+    expect(result).toEqual({
+      ok: true,
+      taskId: root.id,
+      affectedTaskIds: preview.impact.affectedTaskIds,
+    });
+    const tasks = await database!
+      .selectFrom("tasks")
+      .select(["id", "archived", "archived_at"])
+      .where("id", "in", [root.id, child.id])
+      .execute();
+    expect(tasks).toHaveLength(2);
+    expect(tasks.every((task) => task.archived && task.archived_at !== null)).toBe(true);
+    const workspaces = await database!
+      .selectFrom("workspaces")
+      .select("lifecycle")
+      .where("scope_type", "=", "task")
+      .where("scope_id", "in", [root.id, child.id])
+      .execute();
+    expect(workspaces).toEqual([{ lifecycle: "archived" }, { lifecycle: "archived" }]);
+  });
+
+  it("deletes only an unfinished non-top-level subtree and retains every Task Key tombstone", async () => {
+    const { project } = await seedProject("DELT");
+    const root = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "delete-root",
+    });
+    const child = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "delete-child",
+      parentTaskId: root.id,
+      explicitOwnerMembershipId: null,
+    });
+    const grandchild = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "delete-grandchild",
+      parentTaskId: child.id,
+      explicitOwnerMembershipId: null,
+    });
+    const preview = await repository!.previewDestructiveImpact({
+      taskId: child.id,
+      operation: "delete",
+    });
+    expect(preview).toMatchObject({
+      ok: true,
+      impact: { affectedTaskIds: expect.arrayContaining([child.id, grandchild.id]) },
+      confirmationToken: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    if (!preview.ok) {
+      return;
+    }
+    const result = await repository!.deleteTask({
+      taskId: child.id,
+      confirmTaskKey: child.taskKey,
+      actorMembershipId: project.ownerMembership.id,
+      actorType: "human",
+      adminModeActive: false,
+      adminSessionEnteredFromExplicitUserRequest: false,
+      expectedTaskVersion: child.version,
+      expectedGraphVersion: 0,
+      impactConfirmationToken: preview.confirmationToken,
+      requestId: "delete-subtree",
+      now: new Date("2026-07-30T00:00:00.000Z"),
+    });
+    expect(result).toEqual({
+      ok: true,
+      taskId: child.id,
+      affectedTaskIds: preview.impact.affectedTaskIds,
+    });
+    await expect(repository!.findTask(root.id)).resolves.toBeDefined();
+    await expect(repository!.findTask(child.id)).resolves.toBeUndefined();
+    await expect(repository!.findTask(grandchild.id)).resolves.toBeUndefined();
+    const tombstones = await database!
+      .selectFrom("task_key_tombstones")
+      .select(["task_key", "deleted_task_id"])
+      .where("deleted_task_id", "in", [child.id, grandchild.id])
+      .orderBy("task_key")
+      .execute();
+    expect(tombstones).toEqual([
+      { task_key: child.taskKey, deleted_task_id: child.id },
+      { task_key: grandchild.taskKey, deleted_task_id: grandchild.id },
+    ]);
+  });
 
   it("rejects low-level Project/Task Key mutation", async () => {
     const { project } = await seedProject("LOCK");

@@ -33,6 +33,7 @@ import {
 
 const workspaceId = "10000000-0000-4000-8000-000000000001";
 const roots: string[] = [];
+const windowsTestRoot = join(process.cwd(), ".tmp", "workspace-runtime");
 const describeOnDesktop =
   process.platform === "darwin" || process.platform === "win32" ? describe : describe.skip;
 const describeOnWindows = process.platform === "win32" ? describe : describe.skip;
@@ -164,7 +165,7 @@ describeOnDesktop("DefaultWorkspaceCommandRuntime", () => {
 
 describeOnWindows("Windows default Workspace runtime", () => {
   it("selects PasswordVault without requiring macOS Keychain configuration", async () => {
-    const root = await mkdtemp(String.raw`C:\tmp\ngapd-workspace-sync-p004-t001-runtime-`);
+    const root = await createTestRoot();
     roots.push(root);
     await expect(
       createDefaultWorkspaceCommandRuntime({
@@ -201,7 +202,7 @@ async function createRuntime(
 ) {
   const root =
     process.platform === "win32"
-      ? await mkdtemp(String.raw`C:\tmp\ngapd-workspace-sync-p004-t001-runtime-`)
+      ? await createTestRoot()
       : await mkdtemp(join(tmpdir(), "ngapd-workspace-sync-p003-runtime-"));
   roots.push(root);
   await mkdir(join(root, registrationPath));
@@ -240,6 +241,11 @@ async function createRuntime(
     observedWaits,
     runtime: new DefaultWorkspaceCommandRuntime(dependencies),
   };
+}
+
+async function createTestRoot(): Promise<string> {
+  await mkdir(windowsTestRoot, { recursive: true });
+  return mkdtemp(join(windowsTestRoot, "ngapd-workspace-sync-p004-t001-runtime-"));
 }
 
 async function execute(runtime: DefaultWorkspaceCommandRuntime, command: WorkspaceCliCommand) {

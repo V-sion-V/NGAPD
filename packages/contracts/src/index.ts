@@ -8,5 +8,7 @@ export * from "./ownership-transfers.js";
 export * from "./pairing.js";
 export * from "./projects.js";
 export * from "./roles.js";
+export * from "./task-comments.js";
+export * from "./task-notifications.js";
 export * from "./tasks.js";
 export * from "./workspaces.js";

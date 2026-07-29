@@ -1,10 +1,10 @@
 # 领域模型与任务状态机
 
-文档状态：设计基线 0.6（M1 实现同步）
+文档状态：设计基线 0.7（M2 实现同步）
 
 相关文档：[产品需求](01-product-requirements.md) · [权限模型](03-permission-model.md) · [工作区设计](05-workspace-context-wiki.md)
 
-实现同步（2026-07-29）：M1 领域权威已落在共享 TypeBox 契约、纯领域规则和 PostgreSQL version 2/`0008-m1-project-role-members`；Web、API、Worker 与 Workspace 路径复用同一 Membership、Project Owner、Admin Mode 和租约规则。
+实现同步（2026-07-30）：M2 领域权威已落在共享 TypeBox 契约、纯领域规则和 PostgreSQL version 3/`0009-m2-task-management`；API、Worker 与 Workspace 路径复用同一 Task/Graph/Owner/Lifecycle/Comment/Notification、Membership、Admin Mode、版本和租约规则。
 
 ## 1. 聚合边界
 

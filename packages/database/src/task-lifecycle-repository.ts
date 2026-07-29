@@ -120,7 +120,7 @@ interface LifecycleTaskRow {
   id: string;
   project_id: string;
   title: string;
-  body: string;
+  content: string;
   parent_task_id: string | null;
   parent_graph_scope_id: string;
   explicit_owner_membership_id: string | null;
@@ -177,7 +177,7 @@ export class TaskLifecycleRepository {
             "id",
             "project_id",
             "title",
-            "body",
+            "content",
             "parent_task_id",
             "parent_graph_scope_id",
             "explicit_owner_membership_id",
@@ -387,7 +387,7 @@ export class TaskLifecycleRepository {
             task_snapshot: {
               id: task.id,
               title: task.title,
-              body: task.body,
+              content: task.content,
               baseStatus: "done",
               ownerMembershipId: materializedOwner,
               version: Number(updated.version),
@@ -736,7 +736,7 @@ export class TaskLifecycleRepository {
   async changeOwner(
     input: LifecycleActorInput & {
       taskId: string;
-      nextOwnerMembershipId: string;
+      nextOwnerMembershipId: string | null;
       expectedTaskVersion: number;
       expectedWorkspaceSyncVersion: number;
       hasUncommittedClientVersion: boolean;
@@ -770,7 +770,7 @@ export class TaskLifecycleRepository {
           .executeTakeFirstOrThrow();
         const lockedMemberships = await lockMemberships(transaction, taskLocation.project_id, [
           input.actorMembershipId,
-          input.nextOwnerMembershipId,
+          ...(input.nextOwnerMembershipId ? [input.nextOwnerMembershipId] : []),
         ]);
         const task = await transaction
           .selectFrom("tasks")
@@ -778,7 +778,7 @@ export class TaskLifecycleRepository {
             "id",
             "project_id",
             "title",
-            "body",
+            "content",
             "parent_task_id",
             "parent_graph_scope_id",
             "explicit_owner_membership_id",
@@ -795,6 +795,9 @@ export class TaskLifecycleRepository {
         }
         if (task.frozen || task.base_status === "done") {
           return { ok: false, reason: "completed_task_frozen" };
+        }
+        if (input.nextOwnerMembershipId === null && task.parent_task_id === null) {
+          return { ok: false, reason: "owner_invalid" };
         }
         if (Number(task.version) !== input.expectedTaskVersion) {
           return { ok: false, reason: "task_version_conflict" };
@@ -830,17 +833,22 @@ export class TaskLifecycleRepository {
             idempotentReplay: true,
           };
         }
-        const nextOwner = lockedMemberships.find(
-          (membership) => membership.id === input.nextOwnerMembershipId,
-        );
+        const nextOwner = input.nextOwnerMembershipId
+          ? lockedMemberships.find((membership) => membership.id === input.nextOwnerMembershipId)
+          : undefined;
         if (
-          !nextOwner ||
-          nextOwner.status !== "active" ||
-          nextOwner.project_id !== task.project_id
+          input.nextOwnerMembershipId !== null &&
+          (!nextOwner || nextOwner.status !== "active" || nextOwner.project_id !== task.project_id)
         ) {
           return { ok: false, reason: "owner_invalid" };
         }
         let facts = await loadLifecycleFacts(transaction, task.project_id);
+        const nextEffectiveOwnerMembershipId =
+          input.nextOwnerMembershipId ??
+          (task.parent_task_id ? facts.ownerByTaskId.get(task.parent_task_id) : undefined);
+        if (!nextEffectiveOwnerMembershipId) {
+          return { ok: false, reason: "owner_invalid" };
+        }
         const initialImpact = ownerChangeImpact(facts, task.id);
         if (!initialImpact) {
           return { ok: false, reason: "forbidden" };
@@ -1003,13 +1011,14 @@ export class TaskLifecycleRepository {
               task_id: taskId,
               task_version: String(nextVersionByTaskId.get(taskId)!),
               transition_type: "owner_change",
-              owner_membership_id: input.nextOwnerMembershipId,
+              owner_membership_id: nextEffectiveOwnerMembershipId,
               workspace_id: workspace.id,
               workspace_sync_version: workspace.sync_version,
               work_cycle: workspace.work_cycle,
               snapshot: {
                 previousOwnerMembershipId: facts.ownerByTaskId.get(taskId),
-                nextOwnerMembershipId: input.nextOwnerMembershipId,
+                nextExplicitOwnerMembershipId: input.nextOwnerMembershipId,
+                nextEffectiveOwnerMembershipId,
                 snapshotSyncVersion: workspacePlan.snapshotSyncVersion,
                 affectedTaskIds: impact.ownerAffectedTaskIds,
               },
@@ -1049,6 +1058,8 @@ export class TaskLifecycleRepository {
           payload: {
             taskId: task.id,
             taskVersion: nextVersion,
+            explicitOwnerMembershipId: input.nextOwnerMembershipId,
+            effectiveOwnerMembershipId: nextEffectiveOwnerMembershipId,
             affectedTaskIds: impact.ownerAffectedTaskIds,
             affectedTaskVersions: Object.fromEntries(nextVersionByTaskId),
           },
@@ -1057,7 +1068,7 @@ export class TaskLifecycleRepository {
         const response = {
           taskId: task.id,
           taskVersion: nextVersion,
-          ownerMembershipId: input.nextOwnerMembershipId,
+          ownerMembershipId: nextEffectiveOwnerMembershipId,
         };
         await writeLifecycleIdempotency(transaction, {
           projectId: task.project_id,
@@ -1149,7 +1160,7 @@ async function loadLifecycleFacts(
       "id",
       "project_id",
       "title",
-      "body",
+      "content",
       "parent_task_id",
       "parent_graph_scope_id",
       "explicit_owner_membership_id",

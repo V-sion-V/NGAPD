@@ -200,20 +200,124 @@ export interface TaskTable {
   task_sequence: ColumnType<string, string | number, never>;
   task_key: ColumnType<string, string, never>;
   title: string;
-  body: Generated<string>;
+  content: Generated<string>;
   due_at: NullableTimestamp;
-  logical_role: NullableValue<string>;
+  legacy_logical_role: NullableValue<string>;
+  logical_role_id: NullableValue<string>;
   labels: ColumnType<string[], string[] | undefined, string[]>;
-  display_type: NullableValue<string>;
+  display_type: Generated<"normal" | "sprint" | "milestone">;
   base_status: "not_started" | "in_progress" | "done";
   archived: Generated<boolean>;
+  archived_at: NullableTimestamp;
   parent_task_id: string | null;
   parent_graph_scope_id: string;
   explicit_owner_membership_id: string | null;
+  created_by_membership_id: string;
   version: Generated<string>;
   frozen: Generated<boolean>;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
+}
+
+export interface TaskKeyTombstoneTable {
+  project_id: string;
+  task_sequence: ColumnType<string, string | number, never>;
+  task_key: string;
+  deleted_task_id: string;
+  deleted_by_membership_id: string;
+  deleted_at: CreatedAt;
+}
+
+export interface TaskCommentTable {
+  id: string;
+  project_id: string;
+  task_id: string;
+  author_membership_id: string;
+  body: NullableValue<string>;
+  attachments: ColumnType<
+    Array<{ workspaceId: string; path: string; sha256?: string }>,
+    Array<{ workspaceId: string; path: string; sha256?: string }> | undefined,
+    Array<{ workspaceId: string; path: string; sha256?: string }>
+  >;
+  version: Generated<string>;
+  edited_at: NullableTimestamp;
+  deleted_at: NullableTimestamp;
+  hidden_at: NullableTimestamp;
+  hidden_by_membership_id: NullableValue<string>;
+  hidden_reason: NullableValue<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface TaskActivityProjectionTable {
+  cursor: Generated<string>;
+  id: string;
+  outbox_event_id: string;
+  project_id: string;
+  task_id: string;
+  event_type: string;
+  actor_user_id: NullableValue<string>;
+  resource_refs: ColumnType<
+    Record<string, unknown>,
+    Record<string, unknown> | undefined,
+    Record<string, unknown>
+  >;
+  occurred_at: ColumnType<Date, Date | string, never>;
+  created_at: CreatedAt;
+}
+
+export interface TaskCompletionReadinessTable {
+  task_id: string;
+  project_id: string;
+  ready: Generated<boolean>;
+  condition_fingerprint: NullableValue<string>;
+  version: Generated<string>;
+  evaluated_at: UpdatedAt;
+}
+
+export interface TaskCompletionReadyOccurrenceTable {
+  id: string;
+  project_id: string;
+  task_id: string;
+  owner_membership_id: string;
+  condition_fingerprint: string;
+  source_outbox_event_id: string;
+  created_at: CreatedAt;
+}
+
+export interface TaskNotificationTable {
+  id: string;
+  project_id: string;
+  recipient_user_id: string;
+  recipient_membership_id: NullableValue<string>;
+  task_id: NullableValue<string>;
+  event_type: string;
+  occurrence_key: string;
+  critical: Generated<boolean>;
+  resource_refs: ColumnType<
+    Record<string, unknown>,
+    Record<string, unknown> | undefined,
+    Record<string, unknown>
+  >;
+  read_at: NullableTimestamp;
+  version: Generated<string>;
+  source_outbox_event_id: NullableValue<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface TaskNotificationPreferenceTable {
+  user_id: string;
+  event_type: string;
+  enabled: Generated<boolean>;
+  version: Generated<string>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface TaskProjectionEventTable {
+  outbox_event_id: string;
+  projected_at: CreatedAt;
 }
 
 export interface WorkspaceTable {
@@ -407,14 +511,25 @@ export interface TaskOperationIdempotencyTable {
   actor_membership_id: string;
   operation:
     | "create_task"
+    | "update_task"
     | "dependency_change"
+    | "dependency_request_resolve"
     | "task_move"
     | "task_complete"
     | "task_reopen"
     | "task_owner_change"
     | "task_archive"
     | "task_delete"
-    | "task_follow";
+    | "task_follow"
+    | "task_blocker_add"
+    | "task_blocker_resolve"
+    | "task_status"
+    | "comment_create"
+    | "comment_update"
+    | "comment_delete"
+    | "comment_hide"
+    | "notification_read"
+    | "notification_preference";
   idempotency_key: string;
   request_sha256: string;
   response: ColumnType<Record<string, unknown>, Record<string, unknown>, Record<string, unknown>>;
@@ -476,6 +591,14 @@ export interface DatabaseSchema {
   admin_mode_sessions: AdminModeSessionTable;
   m1_idempotency_records: M1IdempotencyRecordTable;
   tasks: TaskTable;
+  task_key_tombstones: TaskKeyTombstoneTable;
+  task_comments: TaskCommentTable;
+  task_activity_projection: TaskActivityProjectionTable;
+  task_completion_readiness: TaskCompletionReadinessTable;
+  task_completion_ready_occurrences: TaskCompletionReadyOccurrenceTable;
+  task_notifications: TaskNotificationTable;
+  task_notification_preferences: TaskNotificationPreferenceTable;
+  task_projection_events: TaskProjectionEventTable;
   sibling_task_graph_scopes: SiblingTaskGraphScopeTable;
   task_dependencies: TaskDependencyTable;
   task_dependency_change_requests: TaskDependencyChangeRequestTable;
