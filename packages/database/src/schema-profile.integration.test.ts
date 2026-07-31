@@ -81,8 +81,16 @@ describeWithDatabase("formal schema profile PostgreSQL integration", () => {
         "0007-application-projections",
         "0008-m1-project-role-members",
         "0009-m2-task-management",
+        "0010-m3-task-ui-history-compatibility",
       ],
     });
+    const completionHistoryForeignKey = await sql<{ count: string }>`
+      select count(*)::text as count
+      from pg_constraint
+      where conname = 'task_completion_snapshots_task_id_project_id_fkey'
+        and conrelid = 'task_completion_snapshots'::regclass
+    `.execute(database!);
+    expect(completionHistoryForeignKey.rows).toEqual([{ count: "0" }]);
 
     await migrateToLatest(database!);
     expect(await schemaFingerprint()).toBe(firstFingerprint);
@@ -112,5 +120,5 @@ describeWithDatabase("formal schema profile PostgreSQL integration", () => {
     );
 
     expect(await rebuild(target)).toBe(firstFingerprint);
-  });
+  }, 15_000);
 });

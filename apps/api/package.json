@@ -18,6 +18,7 @@
     "@ngapd/database": "workspace:*",
     "@ngapd/domain": "workspace:*",
     "@ngapd/object-store": "workspace:*",
+    "@ngapd/workspace-core": "workspace:*",
     "fastify": "^5.6.2"
   },
   "devDependencies": {

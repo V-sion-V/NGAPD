@@ -62,6 +62,9 @@ importers:
       '@ngapd/object-store':
         specifier: workspace:*
         version: link:../../packages/object-store
+      '@ngapd/workspace-core':
+        specifier: workspace:*
+        version: link:../../packages/workspace-core
       fastify:
         specifier: ^5.6.2
         version: 5.10.0

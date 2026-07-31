@@ -14,6 +14,7 @@ export function useResourceEvents(
     const events = new EventSource("/api/v1/events");
     const refreshAfterConnect = () => {
       void queryClient.invalidateQueries({ queryKey: m1Root(userId) });
+      void queryClient.invalidateQueries({ queryKey: m3Root(userId) });
     };
     const invalidate = (message: MessageEvent<string>) => {
       try {
@@ -23,6 +24,7 @@ export function useResourceEvents(
         }
       } catch {
         void queryClient.invalidateQueries({ queryKey: m1Root(userId) });
+        void queryClient.invalidateQueries({ queryKey: m3Root(userId) });
       }
     };
 
@@ -38,4 +40,8 @@ export function useResourceEvents(
 
 function m1Root(userId: string) {
   return ["m1", userId] as const;
+}
+
+function m3Root(userId: string) {
+  return ["m3", userId] as const;
 }

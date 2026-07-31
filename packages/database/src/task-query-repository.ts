@@ -63,6 +63,38 @@ export interface TaskQueryPage {
   }>;
 }
 
+export interface TaskLocationRecord {
+  task: {
+    id: string;
+    projectId: string;
+    taskKey: string;
+    title: string;
+    parentTaskKey: string | null;
+    archived: boolean;
+    displayType: "normal" | "sprint" | "milestone";
+    baseStatus: "not_started" | "in_progress" | "done";
+    effectiveStatus: "not_started" | "in_progress" | "done" | "blocked";
+  };
+  ancestors: Array<{
+    id: string;
+    taskKey: string;
+    title: string;
+    archived: boolean;
+  }>;
+}
+
+export interface TaskSearchPage {
+  results: TaskLocationRecord[];
+  nextCursor: string | null;
+}
+
+export class TaskTreeIntegrityError extends Error {
+  constructor() {
+    super("TASK_TREE_INVALID");
+    this.name = "TaskTreeIntegrityError";
+  }
+}
+
 export class TaskQueryRepository {
   constructor(private readonly database: Database) {}
 
@@ -154,6 +186,88 @@ export class TaskQueryRepository {
     };
   }
 
+  async searchTasks(input: {
+    projectId: string;
+    query: string;
+    lifecycle: "active" | "archived" | "all";
+    afterTaskKey?: string;
+    limit?: number;
+    actorMembershipId: string;
+    adminModeActive: boolean;
+  }): Promise<TaskSearchPage> {
+    const snapshot = await this.loadProjectSnapshot(
+      input.projectId,
+      input.actorMembershipId,
+      input.adminModeActive,
+    );
+    const query = input.query.trim();
+    const taskKeyQuery = query.toUpperCase();
+    const titleQuery = query.toLowerCase();
+    const matches = [...snapshot.records.values()]
+      .map((task) => {
+        const rank =
+          task.taskKey === taskKeyQuery
+            ? 0
+            : task.taskKey.startsWith(taskKeyQuery)
+              ? 1
+              : task.title.toLowerCase().includes(titleQuery)
+                ? 2
+                : null;
+        return { task, rank };
+      })
+      .filter(
+        (
+          candidate,
+        ): candidate is {
+          task: TaskQueryRecord;
+          rank: number;
+        } =>
+          candidate.rank !== null &&
+          (input.lifecycle === "all" ||
+            (input.lifecycle === "archived" ? candidate.task.archived : !candidate.task.archived)),
+      )
+      .sort(
+        (left, right) => left.rank - right.rank || left.task.taskSequence - right.task.taskSequence,
+      );
+    const start =
+      input.afterTaskKey === undefined
+        ? 0
+        : Math.max(
+            0,
+            matches.findIndex((candidate) => candidate.task.taskKey === input.afterTaskKey) + 1,
+          );
+    if (
+      input.afterTaskKey !== undefined &&
+      !matches.some((candidate) => candidate.task.taskKey === input.afterTaskKey)
+    ) {
+      return { results: [], nextCursor: null };
+    }
+    const limit = Math.min(Math.max(input.limit ?? 25, 1), 100);
+    const selected = matches.slice(start, start + limit);
+    return {
+      results: selected.map(({ task }) => this.buildTaskLocation(snapshot.records, task)),
+      nextCursor:
+        matches.length > start + limit && selected.length > 0
+          ? selected.at(-1)!.task.taskKey
+          : null,
+    };
+  }
+
+  async readTaskLocation(input: {
+    projectId: string;
+    taskId: string;
+    actorMembershipId: string;
+    adminModeActive: boolean;
+  }): Promise<TaskLocationRecord | undefined> {
+    const snapshot = await this.loadProjectSnapshot(
+      input.projectId,
+      input.actorMembershipId,
+      input.adminModeActive,
+    );
+    const task = snapshot.records.get(input.taskId);
+    return task ? this.buildTaskLocation(snapshot.records, task) : undefined;
+  }
+
   async listFollows(taskId: string): Promise<string[]> {
     const rows = await this.database
       .selectFrom("task_follows")
@@ -198,6 +312,50 @@ export class TaskQueryRepository {
       .orderBy("task_dependency_change_requests.created_at")
       .orderBy("task_dependency_change_requests.id")
       .execute();
+  }
+
+  private buildTaskLocation(
+    records: ReadonlyMap<string, TaskQueryRecord>,
+    task: TaskQueryRecord,
+  ): TaskLocationRecord {
+    const ancestors: TaskLocationRecord["ancestors"] = [];
+    const visited = new Set([task.id]);
+    let parentTaskId = task.parentTaskId;
+    while (parentTaskId !== null) {
+      if (visited.has(parentTaskId)) {
+        throw new TaskTreeIntegrityError();
+      }
+      visited.add(parentTaskId);
+      const parent = records.get(parentTaskId);
+      if (!parent || parent.projectId !== task.projectId) {
+        throw new TaskTreeIntegrityError();
+      }
+      ancestors.unshift({
+        id: parent.id,
+        taskKey: parent.taskKey,
+        title: parent.title,
+        archived: parent.archived,
+      });
+      parentTaskId = parent.parentTaskId;
+      if (ancestors.length > 256) {
+        throw new TaskTreeIntegrityError();
+      }
+    }
+    const parent = task.parentTaskId ? records.get(task.parentTaskId) : undefined;
+    return {
+      task: {
+        id: task.id,
+        projectId: task.projectId,
+        taskKey: task.taskKey,
+        title: task.title,
+        parentTaskKey: parent?.taskKey ?? null,
+        archived: task.archived,
+        displayType: task.displayType,
+        baseStatus: task.baseStatus,
+        effectiveStatus: task.effectiveStatus,
+      },
+      ancestors,
+    };
   }
 
   private async loadProjectSnapshot(

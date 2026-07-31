@@ -239,7 +239,7 @@ describeWithDatabase("M2 forward migration", () => {
     await expect(inspectDatabaseSchema(database!)).resolves.toMatchObject({
       status: "ready",
       version: "3",
-      expectedMigration: "0009-m2-task-management",
+      expectedMigration: "0010-m3-task-ui-history-compatibility",
     });
     const task = await database!
       .selectFrom("tasks")

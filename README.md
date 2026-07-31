@@ -20,6 +20,8 @@ NGAPD 主要服务于少于 20 人、实际活跃成员通常少于 10 人的独
 
 仓库结构、当前里程碑、设计文档索引和开发命令速查见 [AGENTS.md](AGENTS.md)。
 
+当前已完成 M3“平铺树状任务界面”：正式 React 页面在现有项目上下文中提供单层 DAG、深链/浏览器历史、项目级搜索与筛选、活动/归档分离、完整 M2 人类操作、评论/附件/活动/通知和显式 Admin Mode。实现与验证记录见 [M3 初始实现记录](docs/requirements/m3-task-ui/change-0.md)。
+
 ## 已确认的产品边界
 
 - 客户端支持 macOS、Windows；Web 服务端使用 Docker Compose 部署于单台 Linux 服务器，初期通过内网或 VPN 访问。
@@ -141,4 +143,4 @@ pnpm check
 
 复制并修改 `.env.example` 后，先用 `docker compose config` 检查配置，再用 `docker compose up --build -d` 启动 PostgreSQL、迁移任务、API、Worker、Web 和 Caddy 网关。该 Compose 配置面向 Linux 自托管服务器，macOS 日常开发不要求安装 Docker Desktop。
 
-完整发布栈冒烟验证使用 `pnpm compose:smoke`，需要可用的 Linux Docker/Compose 环境。Docker-only 参考服务器的隔离栈验证、正常内网业务 P95 采样和精确清理流程见[参考服务器 Compose 与 P95 验证方法](docs/validation/reference-server-compose-and-p95.md)；M1 与 M2 P95 客户端入口分别为 `pnpm reference:p95 -- --help` 和 `pnpm reference:m2:p95 -- --help`。部署前应修改数据库密码和 `NGAPD_SITE_ADDRESS`，且不得提交 `.env`。
+完整发布栈冒烟验证使用 `pnpm compose:smoke`，需要可用的 Linux Docker/Compose 环境。Docker-only 参考服务器的隔离栈验证、正常内网业务 P95 采样和精确清理流程见[参考服务器 Compose 与 P95 验证方法](docs/validation/reference-server-compose-and-p95.md)；M1 与 M2/M3 Task 业务 P95 客户端入口分别为 `pnpm reference:p95 -- --help` 和 `pnpm reference:m2:p95 -- --help`。M3 最终隔离发布证据见[参考服务器验证](docs/requirements/m3-task-ui/validation/reference-server-2026-07-31.md)。部署前应修改数据库密码和 `NGAPD_SITE_ADDRESS`，且不得提交 `.env`。

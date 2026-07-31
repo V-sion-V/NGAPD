@@ -361,6 +361,86 @@ export const TaskListQuerySchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const TaskSearchQuerySchema = Type.Object(
+  {
+    query: Type.String({ minLength: 1, maxLength: 240 }),
+    cursor: Type.Optional(TaskListCursorSchema),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 25 })),
+    lifecycle: Type.Optional(
+      Type.Union([Type.Literal("active"), Type.Literal("archived"), Type.Literal("all")]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskAncestorResourceSchema = Type.Object(
+  {
+    id: Type.String({ format: "uuid" }),
+    key: TaskKeySchema,
+    title: Type.String({ minLength: 1, maxLength: 240 }),
+    archiveLifecycle: TaskArchiveLifecycleSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TaskLocationSummarySchema = Type.Object(
+  {
+    id: Type.String({ format: "uuid" }),
+    projectId: Type.String({ format: "uuid" }),
+    key: TaskKeySchema,
+    title: Type.String({ minLength: 1, maxLength: 240 }),
+    parentTaskKey: Type.Union([TaskKeySchema, Type.Null()]),
+    archiveLifecycle: TaskArchiveLifecycleSchema,
+    displayType: TaskDisplayTypeSchema,
+    baseStatus: TaskStatusSchema,
+    effectiveStatus: TaskEffectiveStatusSchema,
+  },
+  { additionalProperties: false },
+);
+
+export const TaskLocationSchema = Type.Object(
+  {
+    task: TaskLocationSummarySchema,
+    ancestors: Type.Array(TaskAncestorResourceSchema, { maxItems: 256 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskSearchCollectionSchema = Type.Object(
+  {
+    results: Type.Array(TaskLocationSchema),
+    nextCursor: Type.Union([TaskListCursorSchema, Type.Null()]),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskWorkspaceFileSchema = Type.Object(
+  {
+    path: Type.String({ minLength: 1, maxLength: 1024 }),
+    size: Type.Integer({ minimum: 0 }),
+    sha256: Sha256Schema,
+  },
+  { additionalProperties: false },
+);
+
+export const TaskWorkspaceFileCollectionSchema = Type.Object(
+  {
+    workspaceId: Type.String({ format: "uuid" }),
+    syncVersion: Type.Integer({ minimum: 0 }),
+    manifestSha256: Sha256Schema,
+    files: Type.Array(TaskWorkspaceFileSchema, { maxItems: 2_000 }),
+  },
+  { additionalProperties: false },
+);
+
+export const TaskWorkspaceFileContentQuerySchema = Type.Object(
+  {
+    path: Type.String({ minLength: 1, maxLength: 1024 }),
+    sha256: Type.Optional(Sha256Schema),
+  },
+  { additionalProperties: false },
+);
+
 export const TaskMutationHeadersSchema = Type.Object(
   {
     "idempotency-key": Type.String({ minLength: 8, maxLength: 128 }),
@@ -576,6 +656,14 @@ export type TaskCollection = Static<typeof TaskCollectionSchema>;
 export type ProjectTaskParams = Static<typeof ProjectTaskParamsSchema>;
 export type ProjectTasksParams = Static<typeof ProjectTasksParamsSchema>;
 export type TaskListQuery = Static<typeof TaskListQuerySchema>;
+export type TaskSearchQuery = Static<typeof TaskSearchQuerySchema>;
+export type TaskAncestorResource = Static<typeof TaskAncestorResourceSchema>;
+export type TaskLocationSummary = Static<typeof TaskLocationSummarySchema>;
+export type TaskLocation = Static<typeof TaskLocationSchema>;
+export type TaskSearchCollection = Static<typeof TaskSearchCollectionSchema>;
+export type TaskWorkspaceFile = Static<typeof TaskWorkspaceFileSchema>;
+export type TaskWorkspaceFileCollection = Static<typeof TaskWorkspaceFileCollectionSchema>;
+export type TaskWorkspaceFileContentQuery = Static<typeof TaskWorkspaceFileContentQuerySchema>;
 export type CreateTaskRequest = Static<typeof CreateTaskRequestSchema>;
 export type UpdateTaskRequest = Static<typeof UpdateTaskRequestSchema>;
 export type TaskMutationResponse = Static<typeof TaskMutationResponseSchema>;

@@ -28,12 +28,17 @@ import {
   TaskDependencyMutationResponseSchema,
   TaskImpactResponseSchema,
   TaskListQuerySchema,
+  TaskLocationSchema,
   TaskMutationResponseSchema,
   TaskNotificationCollectionSchema,
   TaskNotificationEventTypeSchema,
   TaskNotificationPreferenceSchema,
   TaskNotificationResourceSchema,
   TaskResourceSchema,
+  TaskSearchCollectionSchema,
+  TaskSearchQuerySchema,
+  TaskWorkspaceFileCollectionSchema,
+  TaskWorkspaceFileContentQuerySchema,
   TaskWorkspaceStateSchema,
   UpdateTaskCommentRequestSchema,
   UpdateTaskNotificationPreferenceRequestSchema,
@@ -58,6 +63,8 @@ import {
   type ResolveTaskBlockerRequest,
   type ResolveTaskDependencyRequest,
   type TaskListQuery,
+  type TaskSearchQuery,
+  type TaskWorkspaceFileContentQuery,
   type UpdateTaskCommentRequest,
   type UpdateTaskNotificationPreferenceRequest,
   type UpdateTaskRequest,
@@ -166,6 +173,58 @@ export async function registerTaskRoutes(
           lifecycle: request.query.lifecycle ?? "active",
           ...(request.query.cursor ? { afterTaskKey: request.query.cursor } : {}),
           ...(request.query.limit ? { limit: request.query.limit } : {}),
+        },
+        resolved.actor,
+        resolved.context,
+      );
+    },
+  );
+
+  app.get<{
+    Params: ProjectTasksParams;
+    Querystring: TaskSearchQuery;
+    Headers: AdminModeHeaders;
+  }>(
+    "/api/v1/projects/:projectKey/tasks/search",
+    {
+      schema: {
+        params: ProjectTasksParamsSchema,
+        querystring: TaskSearchQuerySchema,
+        headers: AdminModeHeadersSchema,
+        response: { 200: TaskSearchCollectionSchema, ...errorResponses },
+      },
+    },
+    async (request) => {
+      const resolved = await resolveTaskRequest(request, request.params.projectKey, options);
+      return options.service.searchTaskLocations(
+        {
+          projectId: resolved.projectId,
+          query: request.query.query,
+          lifecycle: request.query.lifecycle ?? "active",
+          ...(request.query.cursor ? { afterTaskKey: request.query.cursor } : {}),
+          ...(request.query.limit ? { limit: request.query.limit } : {}),
+        },
+        resolved.actor,
+        resolved.context,
+      );
+    },
+  );
+
+  app.get<{ Params: ProjectTaskParams; Headers: AdminModeHeaders }>(
+    "/api/v1/projects/:projectKey/tasks/:taskKey/ancestors",
+    {
+      schema: {
+        params: ProjectTaskParamsSchema,
+        headers: AdminModeHeadersSchema,
+        response: { 200: TaskLocationSchema, ...errorResponses },
+      },
+    },
+    async (request) => {
+      const resolved = await resolveTaskRequest(request, request.params.projectKey, options);
+      return options.service.readTaskLocation(
+        {
+          projectId: resolved.projectId,
+          taskId: await requireTaskId(options.service, resolved.projectId, request.params.taskKey),
         },
         resolved.actor,
         resolved.context,
@@ -928,6 +987,66 @@ async function registerLifecycleRoutes(
       return task.workspace;
     },
   );
+
+  app.get<{ Params: ProjectTaskParams; Headers: AdminModeHeaders }>(
+    "/api/v1/projects/:projectKey/tasks/:taskKey/workspace/files",
+    {
+      schema: {
+        params: ProjectTaskParamsSchema,
+        headers: AdminModeHeadersSchema,
+        response: { 200: TaskWorkspaceFileCollectionSchema, ...errorResponses },
+      },
+    },
+    async (request) => {
+      const resolved = await resolveTaskRequest(request, request.params.projectKey, options);
+      return options.service.listTaskWorkspaceFiles(
+        {
+          projectId: resolved.projectId,
+          taskId: await requireTaskId(options.service, resolved.projectId, request.params.taskKey),
+        },
+        resolved.actor,
+        resolved.context,
+      );
+    },
+  );
+
+  app.get<{
+    Params: ProjectTaskParams;
+    Querystring: TaskWorkspaceFileContentQuery;
+    Headers: AdminModeHeaders;
+  }>(
+    "/api/v1/projects/:projectKey/tasks/:taskKey/workspace/files/content",
+    {
+      schema: {
+        params: ProjectTaskParamsSchema,
+        querystring: TaskWorkspaceFileContentQuerySchema,
+        headers: AdminModeHeadersSchema,
+        response: {
+          200: { type: "string", format: "binary" },
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const resolved = await resolveTaskRequest(request, request.params.projectKey, options);
+      const result = await options.service.readTaskWorkspaceFile(
+        {
+          projectId: resolved.projectId,
+          taskId: await requireTaskId(options.service, resolved.projectId, request.params.taskKey),
+          path: request.query.path,
+          ...(request.query.sha256 ? { expectedSha256: request.query.sha256 } : {}),
+        },
+        resolved.actor,
+        resolved.context,
+      );
+      return reply
+        .header("cache-control", "private, no-store")
+        .header("content-disposition", 'attachment; filename="workspace-file"')
+        .header("x-content-type-options", "nosniff")
+        .type("application/octet-stream")
+        .send(Buffer.from(result.content));
+    },
+  );
 }
 
 async function registerCommentAndActivityRoutes(
@@ -1344,6 +1463,8 @@ function mapNotification(notification: {
   id: string;
   projectId: string;
   taskId: string | null;
+  projectKey: string | null;
+  taskKey: string | null;
   eventType: string;
   critical: boolean;
   resourceRefs: Record<string, string>;

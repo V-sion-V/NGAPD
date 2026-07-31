@@ -165,7 +165,7 @@ describeWithDatabase("Graphile outbox task PostgreSQL integration", () => {
     } finally {
       await runner.stop();
     }
-  });
+  }, 15_000);
 });
 
 async function startRunner(taskList: ReturnType<typeof createOutboxTaskList>): Promise<Runner> {

@@ -1,10 +1,10 @@
 # 实施路线与验收策略
 
-文档状态：设计基线 0.7（M2 completed/passed）
+文档状态：设计基线 0.8（M3 completed/passed）
 
 相关文档：[产品需求](01-product-requirements.md) · [系统架构](04-system-architecture.md) · [决策记录](08-decisions-and-open-issues.md)
 
-实现同步（2026-07-30）：三个前置原型、Workspace CLI 初始工作流、M0、M1 和 M2 均已 completed/passed。M2 已交付正式 Schema version 3、完整服务端 Task 闭环、评论/活动/通知、Worker/SSE 与 Workspace 原子边界；最终根门禁 288 tests passed、参考服务器六服务硬化验证和全部 M2 P95 门槛通过，无开放 finding。M1 的独立[参考服务器补充验证](requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)保持为封存历史。
+实现同步（2026-07-31）：三个前置原型、Workspace CLI 初始工作流、M0、M1、M2 和 M3 均已 completed/passed。M3 已交付生产平铺树状 Task UI、搜索/祖先链与 Session 附件读取，并以 `0010-m3-task-ui-history-compatibility` 保留完成历史下的既有删除语义；最终根门禁 311 tests passed、参考服务器六服务硬化/浏览器/P95 验证通过，无开放 finding。
 
 ## 1. 实施原则
 
@@ -144,6 +144,8 @@
 验收门槛：跨 Owner 影响操作不能通过低层 API 绕过；父任务不会因子任务完成而自动完成；完成、重新打开和 Owner 变化已经通过服务端 Workspace 契约证明原子边界，不留到客户端阶段补语义。
 
 ### M3：平铺树状任务界面
+
+实现状态（2026-07-31）：initial P-001/P-002 与 `change-0` 已 completed/passed；40 项 FR、25 项 core AC 和 3 项 supplemental AC 均通过。正式 Schema 保持 version 3，最新迁移为 `0010-m3-task-ui-history-compatibility`。详见[M3 初始实现记录](requirements/m3-task-ui/change-0.md)与[参考服务器验证](requirements/m3-task-ui/validation/reference-server-2026-07-31.md)。
 
 交付：
 

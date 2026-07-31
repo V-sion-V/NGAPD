@@ -1,12 +1,12 @@
 # 产品需求说明
 
-文档状态：设计基线 0.7（M2 实现同步）
+文档状态：设计基线 0.8（M3 实现同步）
 
 目标读者：产品设计、客户端开发、服务端开发、Agent/工具开发、测试
 
 相关文档：[领域模型](02-domain-model.md) · [权限模型](03-permission-model.md) · [系统架构](04-system-architecture.md)
 
-实现同步（2026-07-30）：M2“任务管理闭环”已交付正式 Schema version 3/`0009-m2-task-management`、完整 Task `/api/v1`/OpenAPI、评论/活动/站内通知、审计/Outbox/Worker/SSE 和 Task Workspace 原子边界；正式平铺树状 Task UI 仍属于 M3。本文件以下规则是后续里程碑继续复用的产品权威。
+实现同步（2026-07-31）：M3“平铺树状任务界面”已在 M2 权威服务之上交付正式 React Task UI、单 scope DAG、层级/深链/History、搜索筛选、活动/归档分离、全部 M2 人类操作、评论/附件/活动/通知、Admin Mode 与 SSE 草稿保护。正式 Schema 仍为 version 3，最新迁移为 `0010-m3-task-ui-history-compatibility`；M4–M6 继续复用本文件的产品权威。
 
 ## 1. 产品定义
 

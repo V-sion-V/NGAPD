@@ -1,10 +1,10 @@
 # 系统概要设计
 
-文档状态：设计基线 0.7（M2 实现同步）
+文档状态：设计基线 0.8（M3 实现同步）
 
 相关文档：[产品需求](01-product-requirements.md) · [领域模型](02-domain-model.md) · [工作区设计](05-workspace-context-wiki.md) · [Agent 设计](06-agent-integration.md) · [技术架构决策](09-technical-architecture-decisions.md)
 
-实现同步（2026-07-30）：正式数据库 profile 为 version 3/`0009-m2-task-management`；M2 已交付 Fastify Task `/api/v1`/OpenAPI 3.1、共享领域/Repository、评论/活动/站内通知、不可变审计、Outbox→Graphile Worker→SSE 和 Task Workspace 原子边界，M1 React 中文治理 Web 保持兼容。
+实现同步（2026-07-31）：正式数据库 profile 仍为 version 3，最新迁移为 `0010-m3-task-ui-history-compatibility`；M3 已在 M2 Fastify `/api/v1`/OpenAPI、共享领域/Repository、评论/活动/通知、审计/Worker/SSE 和 Task Workspace 原子边界之上交付生产 React Task UI，并保持 M1 中文治理 Web 与精确 prototype 入口兼容。
 
 ## 1. 架构目标
 
@@ -182,7 +182,7 @@ stdio 以外的本地 IPC、OS 用户隔离、宿主配对、短期本地能力�
 
 ### 7.1 关系数据库
 
-正式 Schema profile version 3 的最新迁移是 `0009-m2-task-management`。保存：
+正式 Schema profile version 3 的最新迁移是 `0010-m3-task-ui-history-compatibility`。该前向迁移解除不可变完成快照对已删除活动 Task 行的外键约束，同时保留 Task UUID、项目和 Workspace 历史。数据库保存：
 
 - 用户、项目、成员和逻辑角色。
 - 任务、显式 Owner、父子关系、依赖、关注、父级图版本、依赖变更请求、阻塞和状态。
@@ -238,7 +238,7 @@ stdio 以外的本地 IPC、OS 用户隔离、宿主配对、短期本地能力�
 /projects/{projectKey}/restore
 ```
 
-M2 当前公共表面在 M1 个人资料、项目/成员/角色/Admin Mode 子资源之上，正式提供 Task 查询/命令、依赖变更请求、关注、blocker、评论、活动、通知和 Task Workspace 只读状态。资源响应携带服务端计算的 `actions` 供客户端呈现；每次写入仍重新解析会话、项目、Membership、有效 Owner、Admin Mode、资源版本和影响集合，不能把按钮可见性当作授权。
+M3 当前公共表面在 M2 Task 查询/命令之上补充项目级 Task Key/标题搜索、完整祖先链，以及面向人类 Session 的 Task Workspace 当前清单和安全附件二进制读取。资源响应携带服务端计算的 `actions` 供客户端呈现；每次读取和写入仍重新解析会话、项目、Membership、Task、有效 Owner、Admin Mode、资源版本和影响集合，不能把按钮可见性、URL 或缓存当作授权。
 
 ### 8.3 实时事件
 
@@ -305,7 +305,7 @@ sequenceDiagram
 
 ## 10. 初版任务界面架构
 
-M1 Web 使用 React 19 与 TanStack Query：同源 API/error 层、按 user/project 分区的稳定 query key、一次用户意图一个幂等键，以及只在当前 React 内存保存的项目级 Admin Mode ID。中文界面覆盖认证、资料、项目、精确 Key 加入、申请/成员、所有权、Admin Mode 和角色目录；危险动作使用语义确认并展示目标、状态和后果。既有 `?prototype=task-ui` 入口继续保留，后续 M3 在 M2 正式 Task API/权限基础上交付平铺树状任务界面。
+M3 Web 使用 React 19 与 TanStack Query：同源 API/error/binary 层、按 user/project/scope/resource 分区的稳定 query key、一次用户意图一个幂等键，以及只在当前 React 内存保存的项目级 Admin Mode ID。中文界面在既有认证与项目治理上增加正式 Task 页面；所有写操作按服务端 `actions` 呈现，并在提交时重新携带版本、影响令牌和适用管理员上下文。SSE 只使权威 query 失效，不覆盖草稿或重放写入。既有 `?prototype=task-ui` 入口继续消费隔离夹具。
 
 初版不实现语义缩放、嵌套画布或节点内子图，而是围绕一个明确的“当前父级作用域”渲染平铺树状页面：
 

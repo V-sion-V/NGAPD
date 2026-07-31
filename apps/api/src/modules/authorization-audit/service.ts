@@ -38,7 +38,7 @@ interface Attempt {
   action: string;
   projectId: string | null;
   targetType: string;
-  targetId: string;
+  targetId: string | null;
   beforeVersion?: number;
 }
 
@@ -59,12 +59,15 @@ export class AuthorizationAuditService {
   ): Promise<AuthorizedProjectContext> {
     const project = await this.projects.findProjectByKey(projectKey);
     if (!project) {
-      return this.reject({ ...operation, actor, context, projectId: null }, "project_not_found");
+      return this.reject(
+        { ...operation, actor, context, projectId: null, targetId: null },
+        "project_not_found",
+      );
     }
     const membership = await this.projects.findMembershipByUser(project.id, actor.userId);
     if (!membership) {
       return this.reject(
-        { ...operation, actor, context, projectId: project.id },
+        { ...operation, actor, context, projectId: project.id, targetId: project.id },
         "membership_required",
       );
     }
@@ -75,6 +78,7 @@ export class AuthorizationAuditService {
           actor,
           context,
           projectId: project.id,
+          targetId: project.id,
           beforeVersion: membership.version,
         },
         "membership_inactive",

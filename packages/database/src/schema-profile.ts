@@ -17,6 +17,7 @@ export const FORMAL_MIGRATION_NAMES = [
   "0007-application-projections",
   "0008-m1-project-role-members",
   "0009-m2-task-management",
+  "0010-m3-task-ui-history-compatibility",
 ] as const;
 
 export const PREVIOUS_FORMAL_MIGRATION_NAMES = FORMAL_MIGRATION_NAMES.slice(0, 8);

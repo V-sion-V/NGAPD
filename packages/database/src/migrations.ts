@@ -1951,6 +1951,22 @@ const m2TaskManagementMigration: Migration = {
   },
 };
 
+const m3TaskUiHistoryCompatibilityMigration: Migration = {
+  async up(database: Kysely<unknown>) {
+    await sql`
+      alter table task_completion_snapshots
+        drop constraint task_completion_snapshots_task_id_project_id_fkey;
+    `.execute(database);
+  },
+  async down(database: Kysely<unknown>) {
+    await sql`
+      alter table task_completion_snapshots
+        add constraint task_completion_snapshots_task_id_project_id_fkey
+          foreign key (task_id, project_id) references tasks(id, project_id);
+    `.execute(database);
+  },
+};
+
 export class StaticMigrationProvider implements MigrationProvider {
   async getMigrations(): Promise<Record<string, Migration>> {
     return {
@@ -1963,6 +1979,7 @@ export class StaticMigrationProvider implements MigrationProvider {
       "0007-application-projections": applicationProjectionsMigration,
       "0008-m1-project-role-members": m1ProjectRoleMembersMigration,
       "0009-m2-task-management": m2TaskManagementMigration,
+      "0010-m3-task-ui-history-compatibility": m3TaskUiHistoryCompatibilityMigration,
     };
   }
 }

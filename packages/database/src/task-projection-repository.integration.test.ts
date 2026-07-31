@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -124,6 +124,106 @@ describeWithDatabase("Task projection PostgreSQL integration", () => {
       .where("event_type", "=", "task.due.reminder")
       .executeTakeFirstOrThrow();
     expect(Number(reminders.count)).toBe(1);
+  });
+
+  it("returns navigation keys only while the recipient membership is active", async () => {
+    const foundation = new FoundationRepository(database!);
+    const recipient = await foundation.createUserWithWorkspace({
+      loginName: "projection-recipient",
+      normalizedLoginName: "projection-recipient",
+      passwordHash: "argon2id$fixture",
+    });
+    const membership = await foundation.createMembership({
+      projectId,
+      userId: recipient.user.id,
+      permissionLevel: "member",
+    });
+    const notificationId = randomUUID();
+    await database!
+      .insertInto("task_notifications")
+      .values({
+        id: notificationId,
+        project_id: projectId,
+        recipient_user_id: recipient.user.id,
+        recipient_membership_id: membership.id,
+        task_id: taskId,
+        event_type: "task.comment.created",
+        occurrence_key: `navigation:${notificationId}`,
+        critical: false,
+        resource_refs: {},
+        source_outbox_event_id: null,
+      })
+      .execute();
+    const projections = new TaskProjectionRepository(database!);
+    await expect(projections.listNotifications({ userId: recipient.user.id })).resolves.toEqual([
+      expect.objectContaining({
+        id: notificationId,
+        projectKey: "PROJ",
+        taskKey: "PROJ-1",
+      }),
+    ]);
+    await expect(
+      projections.markNotificationRead({
+        userId: recipient.user.id,
+        notificationId,
+        expectedVersion: 1,
+        read: true,
+        now,
+        requestId: `navigation-read:${notificationId}`,
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      notification: {
+        id: notificationId,
+        projectKey: "PROJ",
+        taskKey: "PROJ-1",
+        read: true,
+        version: 2,
+      },
+    });
+
+    await database!
+      .updateTable("memberships")
+      .set({ status: "removed", permission_level: "member" })
+      .where("id", "=", membership.id)
+      .execute();
+    await expect(projections.listNotifications({ userId: recipient.user.id })).resolves.toEqual([
+      expect.objectContaining({
+        id: notificationId,
+        projectKey: null,
+        taskKey: null,
+      }),
+    ]);
+  });
+
+  it("retains notification meaning but drops the Task navigation key after deletion", async () => {
+    const projections = new TaskProjectionRepository(database!);
+    expect(
+      (await projections.listNotifications({ userId: ownerUserId })).some(
+        (notification) =>
+          notification.taskId === taskId &&
+          notification.projectKey === "PROJ" &&
+          notification.taskKey === "PROJ-1",
+      ),
+    ).toBe(true);
+    await database!.transaction().execute(async (transaction) => {
+      await transaction
+        .updateTable("workspaces")
+        .set({ lifecycle: "deleted" })
+        .where("scope_type", "=", "task")
+        .where("scope_id", "=", taskId)
+        .execute();
+      await transaction.deleteFrom("task_blockers").where("task_id", "=", taskId).execute();
+      await transaction.deleteFrom("tasks").where("id", "=", taskId).execute();
+    });
+    const retained = await projections.listNotifications({ userId: ownerUserId });
+    expect(
+      retained
+        .filter((notification) => notification.taskId === taskId)
+        .every(
+          (notification) => notification.projectKey === "PROJ" && notification.taskKey === null,
+        ),
+    ).toBe(true);
   });
 
   async function dispatchAll() {

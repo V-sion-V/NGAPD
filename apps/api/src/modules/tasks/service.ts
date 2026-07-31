@@ -15,12 +15,21 @@ import {
   TaskProjectionRepository,
   TaskQueryRepository,
   TaskRepository,
+  TaskTreeIntegrityError,
+  WorkspaceRepository,
   type Database,
   type TaskCommentRecord,
   type TaskApplicationActor,
+  type TaskLocationRecord,
   type TaskQueryRecord,
 } from "@ngapd/database";
 import type { DependencyAction } from "@ngapd/domain";
+import { ObjectHashMismatchError, ObjectMissingError, type ObjectStore } from "@ngapd/object-store";
+import {
+  createWorkspaceManifest,
+  normalizeWorkspacePath,
+  WorkspaceCoreError,
+} from "@ngapd/workspace-core";
 
 import { taskApplicationError, taskReasonCode } from "../../application-errors.js";
 
@@ -40,14 +49,19 @@ export class TaskApplicationService {
   private readonly comments: TaskCommentRepository;
   private readonly projections: TaskProjectionRepository;
   private readonly audit: FoundationRepository;
+  private readonly workspaces: WorkspaceRepository;
 
-  constructor(database: Database) {
+  constructor(
+    database: Database,
+    private readonly objectStore?: ObjectStore,
+  ) {
     this.tasks = new TaskRepository(database);
     this.lifecycle = new TaskLifecycleRepository(database);
     this.query = new TaskQueryRepository(database);
     this.comments = new TaskCommentRepository(database);
     this.projections = new TaskProjectionRepository(database);
     this.audit = new FoundationRepository(database);
+    this.workspaces = new WorkspaceRepository(database);
   }
 
   async createTask(
@@ -432,6 +446,64 @@ export class TaskApplicationService {
     return { ...page, tasks: page.tasks.map(mapTaskResource) };
   }
 
+  async searchTaskLocations(
+    input: {
+      projectId: string;
+      query: string;
+      lifecycle: "active" | "archived" | "all";
+      afterTaskKey?: string;
+      limit?: number;
+    },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const applicationActor = await this.requireActor(input.projectId, actor, context, {
+      action: "task.search",
+      targetId: input.projectId,
+      targetType: "project",
+    });
+    try {
+      const page = await this.query.searchTasks({
+        ...input,
+        actorMembershipId: applicationActor.membershipId!,
+        adminModeActive: context.adminModeActive,
+      });
+      return { ...page, results: page.results.map(mapTaskLocation) };
+    } catch (error) {
+      if (error instanceof TaskTreeIntegrityError) {
+        throw taskApplicationError("cycle");
+      }
+      throw error;
+    }
+  }
+
+  async readTaskLocation(
+    input: { projectId: string; taskId: string },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const applicationActor = await this.requireActor(input.projectId, actor, context, {
+      action: "task.location.read",
+      targetId: input.taskId,
+    });
+    try {
+      const location = await this.query.readTaskLocation({
+        ...input,
+        actorMembershipId: applicationActor.membershipId!,
+        adminModeActive: context.adminModeActive,
+      });
+      if (!location) {
+        throw taskApplicationError("task_not_found");
+      }
+      return mapTaskLocation(location);
+    } catch (error) {
+      if (error instanceof TaskTreeIntegrityError) {
+        throw taskApplicationError("cycle");
+      }
+      throw error;
+    }
+  }
+
   async readTaskResource(
     input: { projectId: string; taskId: string },
     actor: AuthenticatedTaskActor,
@@ -465,6 +537,92 @@ export class TaskApplicationService {
         createdAt: blocker.created_at.toISOString(),
       })),
     };
+  }
+
+  async listTaskWorkspaceFiles(
+    input: { projectId: string; taskId: string },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const { task, version } = await this.requireReadableTaskWorkspace(
+      input,
+      actor,
+      context,
+      "task.workspace.files.list",
+    );
+    return {
+      workspaceId: task.workspace.id,
+      syncVersion: version.syncVersion,
+      manifestSha256: version.manifestSha256,
+      files: version.entries.map((entry) => ({
+        path: entry.path,
+        size: entry.size,
+        sha256: entry.sha256,
+      })),
+    };
+  }
+
+  async readTaskWorkspaceFile(
+    input: {
+      projectId: string;
+      taskId: string;
+      path: string;
+      expectedSha256?: string;
+    },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+  ) {
+    const initial = await this.requireReadableTaskWorkspace(
+      input,
+      actor,
+      context,
+      "task.workspace.file.read",
+    );
+    let normalizedPath: string;
+    try {
+      normalizedPath = normalizeWorkspacePath(input.path);
+    } catch (error) {
+      if (error instanceof WorkspaceCoreError) {
+        throw taskApplicationError("comment_attachment_forbidden");
+      }
+      throw error;
+    }
+    const entry = initial.version.entries.find((candidate) => candidate.path === normalizedPath);
+    if (
+      !entry ||
+      (input.expectedSha256 !== undefined && input.expectedSha256 !== entry.sha256) ||
+      !this.objectStore
+    ) {
+      throw taskApplicationError(
+        this.objectStore ? "comment_attachment_forbidden" : "workspace_state_missing",
+      );
+    }
+    let content: Uint8Array;
+    try {
+      content = await this.objectStore.readVerified(entry.sha256);
+    } catch (error) {
+      if (error instanceof ObjectMissingError || error instanceof ObjectHashMismatchError) {
+        throw taskApplicationError("comment_attachment_forbidden");
+      }
+      throw error;
+    }
+    if (content.byteLength !== entry.size) {
+      throw taskApplicationError("comment_attachment_forbidden");
+    }
+    const current = await this.requireReadableTaskWorkspace(
+      input,
+      actor,
+      context,
+      "task.workspace.file.read",
+    );
+    if (
+      current.task.workspace.id !== initial.task.workspace.id ||
+      current.version.syncVersion !== initial.version.syncVersion ||
+      current.version.manifestSha256 !== initial.version.manifestSha256
+    ) {
+      throw taskApplicationError("workspace_version_conflict");
+    }
+    return { content, entry };
   }
 
   async listDependencyChangeRequests(
@@ -916,6 +1074,45 @@ export class TaskApplicationService {
     return result.preference;
   }
 
+  private async requireReadableTaskWorkspace(
+    input: { projectId: string; taskId: string },
+    actor: AuthenticatedTaskActor,
+    context: TaskApplicationContext,
+    action: string,
+  ) {
+    const applicationActor = await this.requireActor(input.projectId, actor, context, {
+      action,
+      targetId: input.taskId,
+    });
+    const task = await this.query.readTask({
+      ...input,
+      actorMembershipId: applicationActor.membershipId!,
+      adminModeActive: context.adminModeActive,
+    });
+    if (!task) {
+      throw taskApplicationError("task_not_found");
+    }
+    if (!task.actions.includes("read_workspace")) {
+      throw taskApplicationError("forbidden");
+    }
+    const version = await this.workspaces.getVersion(task.workspace.id, task.workspace.syncVersion);
+    if (!version) {
+      throw taskApplicationError("workspace_state_missing");
+    }
+    try {
+      const manifest = createWorkspaceManifest(version.entries);
+      if (manifest.hash !== version.manifestSha256) {
+        throw taskApplicationError("workspace_state_missing");
+      }
+    } catch (error) {
+      if (error instanceof WorkspaceCoreError) {
+        throw taskApplicationError("workspace_state_missing");
+      }
+      throw error;
+    }
+    return { task, version };
+  }
+
   private async requireTask(
     taskId: string,
     actor: AuthenticatedTaskActor,
@@ -1078,6 +1275,28 @@ function mapTaskResource(task: TaskQueryRecord) {
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
     actions: task.actions,
+  };
+}
+
+function mapTaskLocation(location: TaskLocationRecord) {
+  return {
+    task: {
+      id: location.task.id,
+      projectId: location.task.projectId,
+      key: location.task.taskKey,
+      title: location.task.title,
+      parentTaskKey: location.task.parentTaskKey,
+      archiveLifecycle: location.task.archived ? ("archived" as const) : ("active" as const),
+      displayType: location.task.displayType,
+      baseStatus: location.task.baseStatus,
+      effectiveStatus: location.task.effectiveStatus,
+    },
+    ancestors: location.ancestors.map((ancestor) => ({
+      id: ancestor.id,
+      key: ancestor.taskKey,
+      title: ancestor.title,
+      archiveLifecycle: ancestor.archived ? ("archived" as const) : ("active" as const),
+    })),
   };
 }
 

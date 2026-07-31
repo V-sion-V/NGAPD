@@ -1,7 +1,16 @@
-import type { TaskUiDependency, TaskUiTask } from "@ngapd/test-fixtures/task-graph";
+export interface GraphTaskLike {
+  id: string;
+  key: string;
+}
 
-export interface TaskLayoutNode {
-  task: TaskUiTask;
+export interface GraphDependencyLike {
+  id: string;
+  predecessorTaskId: string;
+  successorTaskId: string;
+}
+
+export interface TaskLayoutNode<TTask extends GraphTaskLike = GraphTaskLike> {
+  task: TTask;
   x: number;
   y: number;
   width: number;
@@ -9,14 +18,17 @@ export interface TaskLayoutNode {
   rank: number;
 }
 
-export interface TaskLayoutEdge {
-  dependency: TaskUiDependency;
+export interface TaskLayoutEdge<TDependency extends GraphDependencyLike = GraphDependencyLike> {
+  dependency: TDependency;
   path: string;
 }
 
-export interface TaskGraphLayout {
-  nodes: readonly TaskLayoutNode[];
-  edges: readonly TaskLayoutEdge[];
+export interface TaskGraphLayout<
+  TTask extends GraphTaskLike = GraphTaskLike,
+  TDependency extends GraphDependencyLike = GraphDependencyLike,
+> {
+  nodes: readonly TaskLayoutNode<TTask>[];
+  edges: readonly TaskLayoutEdge<TDependency>[];
   width: number;
   height: number;
 }
@@ -29,10 +41,13 @@ const COLUMN_GAP = 76;
 const ROW_GAP = 24;
 const PADDING = 32;
 
-export function layoutTaskGraph(
-  tasks: readonly TaskUiTask[],
-  dependencies: readonly TaskUiDependency[],
-): TaskGraphLayout {
+export function layoutTaskGraph<
+  TTask extends GraphTaskLike,
+  TDependency extends GraphDependencyLike,
+>(
+  tasks: readonly TTask[],
+  dependencies: readonly TDependency[],
+): TaskGraphLayout<TTask, TDependency> {
   const tasksById = new Map(tasks.map((task) => [task.id, task]));
   const outgoing = new Map<string, string[]>();
   const indegree = new Map(tasks.map((task) => [task.id, 0]));
@@ -76,7 +91,7 @@ export function layoutTaskGraph(
     }
   }
 
-  const byRank = new Map<number, TaskUiTask[]>();
+  const byRank = new Map<number, TTask[]>();
   for (const task of tasks) {
     const taskRank = rank.get(task.id) ?? 0;
     const column = byRank.get(taskRank) ?? [];
@@ -87,7 +102,7 @@ export function layoutTaskGraph(
     column.sort((left, right) => left.key.localeCompare(right.key));
   }
 
-  const nodes: TaskLayoutNode[] = [];
+  const nodes: TaskLayoutNode<TTask>[] = [];
   for (const [taskRank, column] of [...byRank.entries()].sort(([left], [right]) => left - right)) {
     for (const [row, task] of column.entries()) {
       nodes.push({

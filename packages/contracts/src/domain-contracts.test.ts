@@ -5,13 +5,19 @@ import { describe, expect, it } from "vitest";
 import { API_ERROR_CODES, DOMAIN_ERROR_CODES } from "./errors.js";
 import { ResourceInvalidationEventSchema } from "./events.js";
 import { ProjectDomainStateSchema, ProjectKeySchema } from "./projects.js";
+import { TaskNotificationResourceSchema } from "./task-notifications.js";
 import {
   AddTaskBlockerCommandSchema,
   ChangeTaskOwnerCommandSchema,
   ChangeTaskFollowCommandSchema,
   TaskArchiveLifecycleSchema,
   TaskImpactSetSchema,
+  TaskLocationSchema,
+  TaskSearchCollectionSchema,
+  TaskSearchQuerySchema,
   TaskStatusSchema,
+  TaskWorkspaceFileCollectionSchema,
+  TaskWorkspaceFileContentQuerySchema,
 } from "./tasks.js";
 
 FormatRegistry.Set("uuid", (value) =>
@@ -117,6 +123,109 @@ describe("formal M0 runtime contracts", () => {
         taskId: sourceTaskId,
         expectedTaskVersion: 0,
         reason: "",
+      }),
+    ).toBe(false);
+  });
+
+  it("validates bounded M3 Task search queries and complete ancestor locations", () => {
+    const taskId = "00000000-0000-4000-8000-000000000001";
+    const parentId = "00000000-0000-4000-8000-000000000002";
+    expect(Value.Check(TaskSearchQuerySchema, { query: "zero", lifecycle: "all" })).toBe(true);
+    expect(Value.Check(TaskSearchQuerySchema, { query: "", limit: 101 })).toBe(false);
+
+    const location = {
+      task: {
+        id: taskId,
+        projectId: parentId,
+        key: "ZERO-2",
+        title: "Child Task",
+        parentTaskKey: "ZERO-1",
+        archiveLifecycle: "active",
+        displayType: "normal",
+        baseStatus: "in_progress",
+        effectiveStatus: "blocked",
+      },
+      ancestors: [
+        {
+          id: parentId,
+          key: "ZERO-1",
+          title: "Parent Task",
+          archiveLifecycle: "active",
+        },
+      ],
+    };
+    expect(Value.Check(TaskLocationSchema, location)).toBe(true);
+    expect(
+      Value.Check(TaskSearchCollectionSchema, {
+        results: [location],
+        nextCursor: "ZERO-2",
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(TaskLocationSchema, {
+        ...location,
+        ancestors: [{ ...location.ancestors[0], key: "another-project-1" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("exposes only bounded Task Workspace file metadata to M3 Session clients", () => {
+    const sha256 = "a".repeat(64);
+    expect(
+      Value.Check(TaskWorkspaceFileCollectionSchema, {
+        workspaceId: "00000000-0000-4000-8000-000000000001",
+        syncVersion: 3,
+        manifestSha256: "b".repeat(64),
+        files: [{ path: "notes/design.md", size: 42, sha256 }],
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(TaskWorkspaceFileContentQuerySchema, {
+        path: "notes/design.md",
+        sha256,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(TaskWorkspaceFileContentQuerySchema, {
+        path: "",
+        leaseToken: "secret",
+      }),
+    ).toBe(false);
+  });
+
+  it("requires explicit nullable navigation keys on notification resources", () => {
+    const notification = {
+      id: "00000000-0000-4000-8000-000000000001",
+      projectId: "00000000-0000-4000-8000-000000000002",
+      taskId: "00000000-0000-4000-8000-000000000003",
+      projectKey: "ZERO",
+      taskKey: "ZERO-1",
+      eventType: "task.comment.created",
+      critical: false,
+      resourceRefs: {},
+      read: false,
+      version: 1,
+      createdAt: "2026-07-31T00:00:00.000Z",
+    };
+    expect(Value.Check(TaskNotificationResourceSchema, notification)).toBe(true);
+    expect(
+      Value.Check(TaskNotificationResourceSchema, {
+        ...notification,
+        projectKey: null,
+        taskKey: null,
+      }),
+    ).toBe(true);
+    expect(
+      Value.Check(TaskNotificationResourceSchema, {
+        ...notification,
+        projectKey: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      Value.Check(TaskNotificationResourceSchema, {
+        ...notification,
+        taskKey: null,
+        workspacePath: "secret.txt",
       }),
     ).toBe(false);
   });

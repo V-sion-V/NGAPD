@@ -39,6 +39,8 @@ export interface TaskNotificationRecord {
   id: string;
   projectId: string;
   taskId: string | null;
+  projectKey: string | null;
+  taskKey: string | null;
   eventType: string;
   critical: boolean;
   resourceRefs: Record<string, string>;
@@ -177,23 +179,41 @@ export class TaskProjectionRepository {
             .executeTakeFirst()
         : undefined);
     let query = this.database
-      .selectFrom("task_notifications")
-      .selectAll()
-      .where("recipient_user_id", "=", input.userId);
+      .selectFrom("task_notifications as notification")
+      .leftJoin("memberships as navigation_membership", (join) =>
+        join
+          .onRef("navigation_membership.project_id", "=", "notification.project_id")
+          .onRef("navigation_membership.user_id", "=", "notification.recipient_user_id")
+          .on("navigation_membership.status", "=", "active"),
+      )
+      .leftJoin("projects as navigation_project", (join) =>
+        join.onRef("navigation_project.id", "=", "navigation_membership.project_id"),
+      )
+      .leftJoin("tasks as navigation_task", (join) =>
+        join
+          .onRef("navigation_task.id", "=", "notification.task_id")
+          .onRef("navigation_task.project_id", "=", "navigation_membership.project_id"),
+      )
+      .selectAll("notification")
+      .select([
+        "navigation_project.project_key as navigation_project_key",
+        "navigation_task.task_key as navigation_task_key",
+      ])
+      .where("notification.recipient_user_id", "=", input.userId);
     if (cursor) {
       query = query.where((expression) =>
         expression.or([
-          expression("created_at", ">", cursor.createdAt),
+          expression("notification.created_at", ">", cursor.createdAt),
           expression.and([
-            expression("created_at", "=", cursor.createdAt),
-            expression("id", ">", cursor.id),
+            expression("notification.created_at", "=", cursor.createdAt),
+            expression("notification.id", ">", cursor.id),
           ]),
         ]),
       );
     }
     const rows = await query
-      .orderBy("created_at")
-      .orderBy("id")
+      .orderBy("notification.created_at")
+      .orderBy("notification.id")
       .limit(Math.min(Math.max(input.limit ?? 50, 1), 200))
       .execute();
     return rows.map(mapNotification);
@@ -270,7 +290,30 @@ export class TaskProjectionRepository {
           conflict.columns(["request_id", "event_type", "aggregate_id"]).doNothing(),
         )
         .execute();
-      return { ok: true, notification: mapNotification(updated) };
+      const updatedWithNavigation = await transaction
+        .selectFrom("task_notifications as notification")
+        .leftJoin("memberships as navigation_membership", (join) =>
+          join
+            .onRef("navigation_membership.project_id", "=", "notification.project_id")
+            .onRef("navigation_membership.user_id", "=", "notification.recipient_user_id")
+            .on("navigation_membership.status", "=", "active"),
+        )
+        .leftJoin("projects as navigation_project", (join) =>
+          join.onRef("navigation_project.id", "=", "navigation_membership.project_id"),
+        )
+        .leftJoin("tasks as navigation_task", (join) =>
+          join
+            .onRef("navigation_task.id", "=", "notification.task_id")
+            .onRef("navigation_task.project_id", "=", "navigation_membership.project_id"),
+        )
+        .selectAll("notification")
+        .select([
+          "navigation_project.project_key as navigation_project_key",
+          "navigation_task.task_key as navigation_task_key",
+        ])
+        .where("notification.id", "=", updated.id)
+        .executeTakeFirstOrThrow();
+      return { ok: true, notification: mapNotification(updatedWithNavigation) };
     });
   }
 
@@ -892,6 +935,8 @@ function mapNotification(row: {
   id: string;
   project_id: string;
   task_id: string | null;
+  navigation_project_key?: string | null;
+  navigation_task_key?: string | null;
   event_type: string;
   critical: boolean;
   resource_refs: Record<string, unknown>;
@@ -903,6 +948,8 @@ function mapNotification(row: {
     id: row.id,
     projectId: row.project_id,
     taskId: row.task_id,
+    projectKey: row.navigation_project_key ?? null,
+    taskKey: row.navigation_task_key ?? null,
     eventType: row.event_type,
     critical: row.critical,
     resourceRefs: stringRecord(row.resource_refs),

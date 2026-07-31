@@ -259,11 +259,23 @@ describeWithDatabase("M2 public Task API and projections", () => {
       headers: { cookie },
     });
     expect(notifications.statusCode).toBe(200);
+    const notificationResources = notifications.json<{
+      notifications: Array<{
+        eventType: string;
+        projectKey: string | null;
+        taskKey: string | null;
+      }>;
+    }>().notifications;
+    expect(notificationResources.map((entry) => entry.eventType)).toEqual(
+      expect.arrayContaining(["task.blocker.changed", "task.comment.created"]),
+    );
     expect(
-      notifications
-        .json<{ notifications: Array<{ eventType: string }> }>()
-        .notifications.map((entry) => entry.eventType),
-    ).toEqual(expect.arrayContaining(["task.blocker.changed", "task.comment.created"]));
+      notificationResources
+        .filter((entry) =>
+          ["task.blocker.changed", "task.comment.created"].includes(entry.eventType),
+        )
+        .every((entry) => entry.projectKey === "MTPR" && entry.taskKey === "MTPR-1"),
+    ).toBe(true);
 
     const list = await app.inject({
       method: "GET",

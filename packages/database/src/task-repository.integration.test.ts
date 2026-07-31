@@ -7,6 +7,7 @@ import { createDatabase } from "./client.js";
 import { FoundationRepository } from "./foundation-repository.js";
 import { migrateToLatest } from "./migrator.js";
 import { canonicalDatabaseTarget, resetFormalSchema } from "./schema-profile.js";
+import { TaskLifecycleRepository } from "./task-lifecycle-repository.js";
 import { TaskRepository } from "./task-repository.js";
 import type { DatabaseSchema } from "./types.js";
 
@@ -1255,6 +1256,115 @@ describeWithDatabase("formal Task and graph PostgreSQL integration", () => {
       { task_key: child.taskKey, deleted_task_id: child.id },
       { task_key: grandchild.taskKey, deleted_task_id: grandchild.id },
     ]);
+  });
+
+  it("deletes a reopened child while preserving its immutable completion history", async () => {
+    const { project } = await seedProject("DELH");
+    const root = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "delete-history-root",
+    });
+    const child = await createTask({
+      projectId: project.project.id,
+      actorMembershipId: project.ownerMembership.id,
+      label: "delete-history-child",
+      parentTaskId: root.id,
+      explicitOwnerMembershipId: null,
+    });
+    const lifecycle = new TaskLifecycleRepository(database!);
+    await expect(
+      lifecycle.completeTask({
+        taskId: child.id,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: 1,
+        expectedGraphVersion: 0,
+        expectedWorkspaceSyncVersion: 0,
+        finalServerVersionReceived: true,
+        hasUncommittedClientVersion: false,
+        requestId: "delete-history-complete",
+        idempotencyKey: "delete-history-complete",
+        requestSha256: requestHash("delete-history-complete"),
+        now: new Date("2026-07-31T00:00:00.000Z"),
+      }),
+    ).resolves.toMatchObject({ ok: true, taskVersion: 2 });
+    await expect(
+      lifecycle.reopenTask({
+        taskId: child.id,
+        policy: "deny",
+        expectedTaskVersions: { [child.id]: 2 },
+        expectedOwnerMembershipIds: {
+          [child.id]: project.ownerMembership.id,
+        },
+        confirmedTaskIds: [child.id],
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        requestId: "delete-history-reopen",
+        idempotencyKey: "delete-history-reopen",
+        requestSha256: requestHash("delete-history-reopen"),
+        now: new Date("2026-07-31T00:01:00.000Z"),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      taskIds: [child.id],
+      idempotentReplay: false,
+    });
+    const preview = await repository!.previewDestructiveImpact({
+      taskId: child.id,
+      operation: "delete",
+    });
+    expect(preview).toMatchObject({ ok: true });
+    if (!preview.ok) {
+      return;
+    }
+    await expect(
+      repository!.deleteTask({
+        taskId: child.id,
+        confirmTaskKey: child.taskKey,
+        actorMembershipId: project.ownerMembership.id,
+        actorType: "human",
+        adminModeActive: false,
+        adminSessionEnteredFromExplicitUserRequest: false,
+        expectedTaskVersion: 3,
+        expectedGraphVersion: 0,
+        impactConfirmationToken: preview.confirmationToken,
+        requestId: "delete-history-delete",
+        now: new Date("2026-07-31T00:02:00.000Z"),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      taskId: child.id,
+      affectedTaskIds: [child.id],
+    });
+    await expect(repository!.findTask(child.id)).resolves.toBeUndefined();
+    await expect(
+      database!
+        .selectFrom("task_completion_snapshots")
+        .select(["task_id", "task_version", "workspace_sync_version", "work_cycle"])
+        .where("task_id", "=", child.id)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({
+      task_id: child.id,
+      task_version: "2",
+      workspace_sync_version: "0",
+      work_cycle: 1,
+    });
+    await expect(
+      database!
+        .selectFrom("task_workspace_transition_snapshots")
+        .select(["task_id", "task_version", "transition_type"])
+        .where("task_id", "=", child.id)
+        .executeTakeFirstOrThrow(),
+    ).resolves.toEqual({
+      task_id: child.id,
+      task_version: "3",
+      transition_type: "reopen",
+    });
   });
 
   it("rejects low-level Project/Task Key mutation", async () => {

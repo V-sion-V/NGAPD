@@ -152,7 +152,7 @@ export async function buildApp(options: AppOptions = {}): Promise<FastifyInstanc
     });
     await registerTaskRoutes(app, {
       identity,
-      service: new TaskApplicationService(options.database),
+      service: new TaskApplicationService(options.database, options.objectStore),
       authorization: new AuthorizationAuditService(options.database),
       publicOrigin,
       now,

@@ -47,7 +47,11 @@ describe("M1 Web model", () => {
         id: "0dcbf010-3210-4bee-bac8-626f044965ed",
         key: "GAME",
       }),
-    ).toEqual([m1QueryKeys.roles("user-1", "GAME"), m1QueryKeys.members("user-1", "GAME")]);
+    ).toEqual([
+      m1QueryKeys.roles("user-1", "GAME"),
+      m1QueryKeys.members("user-1", "GAME"),
+      ["m3", "user-1", "project", "GAME"],
+    ]);
   });
 
   it("creates one UUID per explicit intent and keeps time labels deterministic", () => {

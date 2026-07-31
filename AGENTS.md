@@ -9,10 +9,10 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 ## 当前开发阶段与目标
 
 - 已完成基线：三个前置原型、Workspace CLI 初始工作流、M0“领域基线和工程骨架”，以及 M1“项目、角色和成员”完整初始运行；M0 `change-0`、`change-1`、严格纠正运行 `change-2` 和 M1 P-001/P-002/P-003 均为 `completed/passed`。
-- 当前开发状态：M2“任务管理闭环”已按 schema-v3.2、`relaxed` 策略完成唯一 initial P-001，并由 `change-0.md` 与 `effective-requirements.md` 冻结为 `completed/passed`。正式 Schema 为 version 3/`0009-m2-task-management`；共享 Contracts/Domain、Task Query/Command/Lifecycle/Comment/Projection Repository、面向人类 Session 的完整 `/api/v1`/OpenAPI、Audit/Outbox/Graphile Worker/SSE、活动流/站内通知和 Task Workspace 原子边界均已交付。最终 Node 24/pnpm 11/PostgreSQL 17 根 `pnpm run ci` 为 288 tests passed、0 failed、9 platform-conditional skipped。
-- 参考发布状态：2026-07-30 在 `192.168.100.1` 以隔离六服务 Compose 栈验证最终源码快照，Schema 3/9 migrations、重复迁移、健康/硬化/持久化/秘密扫描和 Chrome Web/Swagger 检查通过；列表/详情/创建/更新/200 节点 DAG P95 分别为 15.36/19.53/45.49/29.83/38.73 ms。隔离容器、卷、镜像、验证目录、开发数据库和 SSH 隧道已清理，服务器原有服务未受影响，无开放 finding。
-- 后续路线图：M2 initial 历史已经冻结；任何 M2 需求或行为变化只能使用 `$apply-feature-change` 创建连续 change run。下一产品里程碑是 M3“平铺树状任务界面”，需先使用 `$clarify-feature-requirements` 建立独立 schema-v3 工作流，不得改写 M2 result、`change-0.md` 或 effective snapshot。
-- 阶段依据：[M2 当前有效需求](docs/requirements/m2-task-management/effective-requirements.md)、[M2 初始实现记录](docs/requirements/m2-task-management/change-0.md)、[M2 P-001 结果](docs/requirements/m2-task-management/execution/initial/phase-001-result.md)、[M2 参考服务器验证](docs/requirements/m2-task-management/validation/reference-server-2026-07-30.md)、[M1 当前有效需求](docs/requirements/m1-project-role-members/effective-requirements.md)、[M1 参考服务器补充验证](docs/requirements/m1-project-role-members/validation/reference-server-2026-07-29.md)与[总体实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
+- 当前开发状态：M3“平铺树状任务界面”已按 schema-v3.2、`relaxed` 策略完成 initial P-001/P-002，并由 `change-0.md` 与 `effective-requirements.md` 冻结为 `completed/passed`。正式 Schema 仍为 version 3，最新迁移为 `0010-m3-task-ui-history-compatibility`；生产 React Task UI 已交付单 scope DAG、深链/History、搜索筛选、活动/归档浏览、完整 M2 人类操作、评论/附件/活动/通知、Admin Mode、SSE 草稿保护和安全通知导航。最终 Node 24/pnpm 11/PostgreSQL 17 根 `pnpm run ci` 为 311 tests passed、0 failed、9 platform-conditional skipped。
+- 参考发布状态：2026-07-31 在 `192.168.100.1` 以隔离六服务 Compose 栈验证最终源码快照，Schema 3/10 migrations、重复迁移、健康/硬化/持久化/秘密扫描、正式 Task UI 与 Swagger 均通过；列表/详情/创建/更新/200 节点 DAG P95 分别为 23.73/24.86/47.47/32.32/42.46 ms。真实浏览器完成“创建父子 Task→完成→重开→不可恢复删除”回归；隔离容器、卷、镜像、验证目录、临时数据库和 SSH 隧道已清理，服务器原有服务未受影响，无开放 finding。
+- 后续路线图：M2、M3 initial 历史已经冻结；任何对应需求或行为变化只能使用 `$apply-feature-change` 创建连续 change run。下一产品里程碑是 M4“Workspace 同步平台适配器”，需先使用 `$clarify-feature-requirements` 建立独立 schema-v3 工作流，不得改写 M2/M3 result、`change-0.md` 或 effective snapshot。
+- 阶段依据：[M3 当前有效需求](docs/requirements/m3-task-ui/effective-requirements.md)、[M3 初始实现记录](docs/requirements/m3-task-ui/change-0.md)、[M3 P-002 结果](docs/requirements/m3-task-ui/execution/initial/phase-002-result.md)、[M3 参考服务器验证](docs/requirements/m3-task-ui/validation/reference-server-2026-07-31.md)、[M2 当前有效需求](docs/requirements/m2-task-management/effective-requirements.md)、[M2 初始实现记录](docs/requirements/m2-task-management/change-0.md)与[总体实施路线](docs/07-roadmap-and-validation.md)。活动运行或里程碑状态变化后必须立即更新本节。
 
 ## 文档索引
 
@@ -36,6 +36,7 @@ NGAPD 是面向小型独立游戏团队的 AI 原生敏捷项目管理系统。�
 | `docs/requirements/m0-domain-baseline/`       | M0 领域基线与工程骨架的封存记录                      |
 | `docs/requirements/m1-project-role-members/`  | M1 项目、角色和成员的活动工作流记录                  |
 | `docs/requirements/m2-task-management/`       | M2 任务管理闭环的封存 initial 工作流记录             |
+| `docs/requirements/m3-task-ui/`               | M3 平铺树状任务界面的封存 initial 工作流记录         |
 | `docs/requirements/task-ui-prototype/`        | Task UI 前置原型的封存记录                           |
 | `docs/requirements/workspace-cli/`            | Workspace CLI 初始实现的封存记录                     |
 | `docs/requirements/workspace-sync-prototype/` | Workspace 同步前置原型的封存记录                     |

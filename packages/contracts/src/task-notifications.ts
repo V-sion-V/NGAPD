@@ -1,5 +1,8 @@
 import { Type, type Static } from "@sinclair/typebox";
 
+import { ProjectKeySchema } from "./projects.js";
+import { TaskKeySchema } from "./tasks.js";
+
 export const TaskNotificationEventTypeSchema = Type.Union([
   Type.Literal("task.owner.changed"),
   Type.Literal("task.blocker.changed"),
@@ -19,6 +22,8 @@ export const TaskNotificationResourceSchema = Type.Object(
     id: Type.String({ format: "uuid" }),
     projectId: Type.String({ format: "uuid" }),
     taskId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+    projectKey: Type.Union([ProjectKeySchema, Type.Null()]),
+    taskKey: Type.Union([TaskKeySchema, Type.Null()]),
     eventType: TaskNotificationEventTypeSchema,
     critical: Type.Boolean(),
     resourceRefs: Type.Record(Type.String({ maxLength: 80 }), Type.String({ maxLength: 160 })),

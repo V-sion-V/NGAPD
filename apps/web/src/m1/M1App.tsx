@@ -1,8 +1,11 @@
 import type { SessionActor, UserProfile } from "@ngapd/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiRequest } from "../api.js";
+import { NotificationsPanel } from "../m3/NotificationsPanel.js";
+import { TaskWorkspace } from "../m3/TaskWorkspace.js";
+import { parseTaskRoute } from "../m3/model.js";
 import { AccessPanel } from "./AccessPanel.js";
 import { AuthGate } from "./AuthGate.js";
 import { firstVisibleGrapheme, m1QueryKeys, type CurrentProjectIdentity } from "./model.js";
@@ -10,7 +13,7 @@ import { ProfilePanel } from "./ProfilePanel.js";
 import { ProjectsPanel } from "./ProjectsPanel.js";
 import { useResourceEvents } from "./use-resource-events.js";
 
-type AppView = "projects" | "profile" | "access";
+type AppView = "projects" | "tasks" | "notifications" | "profile" | "access";
 
 export function M1App() {
   return (
@@ -31,8 +34,11 @@ function AuthenticatedWorkspace({
   logout: () => void;
   logoutPending: boolean;
 }) {
-  const [view, setView] = useState<AppView>("projects");
-  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
+  const initialTaskRoute = parseTaskRoute(window.location.search);
+  const [view, setView] = useState<AppView>(initialTaskRoute ? "tasks" : "projects");
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(
+    initialTaskRoute?.projectKey ?? null,
+  );
   const [currentProject, setCurrentProject] = useState<CurrentProjectIdentity | null>(null);
   const profile = useQuery({
     queryKey: m1QueryKeys.profile(actor.userId),
@@ -42,6 +48,54 @@ function AuthenticatedWorkspace({
   useResourceEvents(actor.userId, currentProject);
 
   const displayName = profile.data?.displayName ?? actor.loginName;
+  const navigateView = (nextView: AppView): void => {
+    if (nextView === "tasks" && selectedProjectKey) {
+      const query = new URLSearchParams({
+        view: "tasks",
+        project: selectedProjectKey,
+        parent: "root",
+      });
+      window.history.pushState(null, "", `/?${query.toString()}`);
+    } else if (view === "tasks") {
+      window.history.pushState(null, "", "/");
+    }
+    setView(nextView);
+  };
+  const openNotificationTask = (
+    projectKey: string,
+    parentTaskKey: string | null,
+    taskKey: string | null,
+    lifecycle: "active" | "history",
+  ) => {
+    const query = new URLSearchParams({
+      view: "tasks",
+      project: projectKey,
+      parent: parentTaskKey ?? "root",
+    });
+    if (taskKey) {
+      query.set("task", taskKey);
+    }
+    if (lifecycle === "history") {
+      query.set("history", "1");
+    }
+    setSelectedProjectKey(projectKey);
+    setView("tasks");
+    window.history.pushState(null, "", `/?${query.toString()}`);
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      const route = parseTaskRoute(window.location.search);
+      if (route) {
+        setSelectedProjectKey(route.projectKey);
+        setView("tasks");
+      } else {
+        setView((current) => (current === "tasks" ? "projects" : current));
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   return (
     <div className="app-shell">
@@ -78,15 +132,26 @@ function AuthenticatedWorkspace({
       <div className="workspace-layout">
         <nav className="side-nav" aria-label="主要导航">
           <p className="side-nav-label">工作区</p>
-          <NavButton active={view === "projects"} onClick={() => setView("projects")}>
+          <NavButton active={view === "projects"} onClick={() => navigateView("projects")}>
             <span aria-hidden="true">◇</span>
             项目
           </NavButton>
-          <NavButton active={view === "profile"} onClick={() => setView("profile")}>
+          <NavButton active={view === "tasks"} onClick={() => navigateView("tasks")}>
+            <span aria-hidden="true">⌘</span>
+            任务
+          </NavButton>
+          <NavButton
+            active={view === "notifications"}
+            onClick={() => navigateView("notifications")}
+          >
+            <span aria-hidden="true">◉</span>
+            通知
+          </NavButton>
+          <NavButton active={view === "profile"} onClick={() => navigateView("profile")}>
             <span aria-hidden="true">◎</span>
             个人资料
           </NavButton>
-          <NavButton active={view === "access"} onClick={() => setView("access")}>
+          <NavButton active={view === "access"} onClick={() => navigateView("access")}>
             <span aria-hidden="true">⌁</span>
             设备与 Workspace
           </NavButton>
@@ -104,6 +169,26 @@ function AuthenticatedWorkspace({
               selectedProjectKey={selectedProjectKey}
               userId={actor.userId}
             />
+          )}
+          {view === "tasks" &&
+            (selectedProjectKey ? (
+              <TaskWorkspace
+                onProjectIdentity={setCurrentProject}
+                projectKey={selectedProjectKey}
+                userId={actor.userId}
+              />
+            ) : (
+              <section className="panel">
+                <p className="eyebrow">Task workspace</p>
+                <h2>请先选择项目</h2>
+                <p>在“项目”页面选择一个活动项目，再返回任务页面。</p>
+                <button className="primary" type="button" onClick={() => navigateView("projects")}>
+                  前往项目
+                </button>
+              </section>
+            ))}
+          {view === "notifications" && (
+            <NotificationsPanel onOpenTask={openNotificationTask} userId={actor.userId} />
           )}
           {view === "profile" && <ProfilePanel userId={actor.userId} />}
           {view === "access" && <AccessPanel />}

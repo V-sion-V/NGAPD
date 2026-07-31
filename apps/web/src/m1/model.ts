@@ -35,49 +35,62 @@ export function invalidationQueryKeys(
   event: ResourceInvalidationEvent,
   currentProject?: CurrentProjectIdentity | null,
 ): QueryKey[] {
+  const m3Root = ["m3", userId] as const;
+  const m3Notifications = ["m3", userId, "notifications"] as const;
   if (event.resourceType === "user_profile") {
-    return [m1QueryKeys.profile(userId)];
+    return [m1QueryKeys.profile(userId), m3Root];
   }
 
   const projectKey =
     currentProject && event.projectId && currentProject.id === event.projectId
       ? currentProject.key
       : null;
+  const m3Project = projectKey ? (["m3", userId, "project", projectKey] as const) : m3Root;
   switch (event.resourceType) {
     case "project":
       return projectKey
-        ? [m1QueryKeys.projects(userId), m1QueryKeys.project(userId, projectKey)]
-        : [m1QueryKeys.projects(userId)];
+        ? [m1QueryKeys.projects(userId), m1QueryKeys.project(userId, projectKey), m3Project]
+        : [m1QueryKeys.projects(userId), m3Root];
     case "membership":
       return projectKey
         ? [
             m1QueryKeys.projects(userId),
             m1QueryKeys.project(userId, projectKey),
             m1QueryKeys.members(userId, projectKey),
+            m3Project,
           ]
-        : [m1QueryKeys.projects(userId)];
+        : [m1QueryKeys.projects(userId), m3Root];
     case "membership_join_request":
       return projectKey
         ? [
             m1QueryKeys.project(userId, projectKey),
             m1QueryKeys.joinRequests(userId, projectKey),
             m1QueryKeys.members(userId, projectKey),
+            m3Project,
           ]
-        : [m1QueryKeys.projects(userId)];
+        : [m1QueryKeys.projects(userId), m3Root];
     case "project_role":
       return projectKey
-        ? [m1QueryKeys.roles(userId, projectKey), m1QueryKeys.members(userId, projectKey)]
-        : [m1QueryKeys.projects(userId)];
+        ? [
+            m1QueryKeys.roles(userId, projectKey),
+            m1QueryKeys.members(userId, projectKey),
+            m3Project,
+          ]
+        : [m1QueryKeys.projects(userId), m3Root];
     case "ownership_transfer":
       return projectKey
-        ? [m1QueryKeys.project(userId, projectKey), m1QueryKeys.transfers(userId, projectKey)]
-        : [m1QueryKeys.projects(userId)];
+        ? [
+            m1QueryKeys.project(userId, projectKey),
+            m1QueryKeys.transfers(userId, projectKey),
+            m3Project,
+          ]
+        : [m1QueryKeys.projects(userId), m3Root];
     case "admin_mode":
       return projectKey
-        ? [m1QueryKeys.project(userId, projectKey)]
-        : [m1QueryKeys.projects(userId)];
+        ? [m1QueryKeys.project(userId, projectKey), m3Project]
+        : [m1QueryKeys.projects(userId), m3Root];
     default:
-      return [m1QueryKeys.root(userId)];
+      return [m1QueryKeys.root(userId), m3Project, m3Notifications];
   }
 }
 
