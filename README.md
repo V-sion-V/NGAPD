@@ -57,7 +57,32 @@ NGAPD 主要服务于少于 20 人、实际活跃成员通常少于 10 人的独
 
 ## 开发、测试与部署
 
-仓库要求 `.node-version` 指定的 Node.js 24 和 `package.json` 指定的 pnpm 11。Apple Silicon 是 macOS 首要开发架构；Intel Mac 可使用相同命令，但 Homebrew 会选择对应架构的安装目录。
+仓库要求 `.node-version` 指定的 Node.js 24 和 `package.json` 指定的 pnpm 11。标准开发、迁移和测试命令会自动读取被 Git 忽略的 `.env`，优先验证本地 PostgreSQL 17，无法使用时再连接已配置的 fallback。完整规则与共享测试库安全边界见[持久开发数据库与自动回退](docs/validation/development-database.md)。
+
+### 日常快速启动
+
+已配置工作区只需在新终端执行：
+
+```sh
+node --version
+pnpm --version
+pnpm env:check
+pnpm db:migrate
+pnpm dev
+```
+
+预期工具链为 Node `v24.18.0`、pnpm `11.9.0`。`pnpm dev` 会并行启动 API、Worker 和 Web，是需要用 `Ctrl+C` 停止的常驻进程。首次克隆或依赖变化后，先单独运行一次可能较久的 `pnpm install --frozen-lockfile`；不要把依赖安装或 `pnpm dev` 当作等待完成的 Agent 命令。
+
+默认可访问：
+
+- Web：`http://localhost:5173`
+- API 存活检查：`http://localhost:3000/health/live`
+- API 就绪检查：`http://localhost:3000/health/ready`
+- OpenAPI 文档：`http://localhost:3000/docs`
+
+`.env`、`.env.*`、本地 `.data/` 和 `.tmp/` 均被 Git 忽略；不得提交 fallback 口令、数据库 URL、Cookie 或 token。
+
+Apple Silicon 是 macOS 首要开发架构；Intel Mac 可使用相同命令，但 Homebrew 会选择对应架构的安装目录。
 
 ### macOS 首次安装
 
@@ -101,28 +126,21 @@ API、Worker 和 Web 的全栈开发需要 PostgreSQL 17。Homebrew 默认使用
 ```zsh
 brew services start postgresql@17
 createdb ngapd
+createdb ngapd_test
 
 MACOS_USER="$(id -un)"
-sed -i '' "s|^DATABASE_URL=.*|DATABASE_URL=postgres://${MACOS_USER}@localhost:5432/ngapd|" .env
+sed -i '' "s|^DATABASE_LOCAL_URL=.*|DATABASE_LOCAL_URL=postgres://${MACOS_USER}@localhost:5432/ngapd|" .env
+sed -i '' "s|^DATABASE_TEST_LOCAL_URL=.*|DATABASE_TEST_LOCAL_URL=postgres://${MACOS_USER}@localhost:5432/ngapd_test|" .env
 sed -i '' 's|^OBJECT_STORE_PATH=.*|OBJECT_STORE_PATH=./.data/objects|' .env
 sed -i '' 's|^BACKUP_PATH=.*|BACKUP_PATH=./.data/backups|' .env
 
-set -a
-source .env
-set +a
+pnpm env:check
 pnpm db:migrate
 pnpm check
 pnpm dev
 ```
 
-`pnpm dev` 会并行启动 API、Worker 和 Web，不会启动 Workspace CLI。默认可访问：
-
-- Web：`http://localhost:5173`
-- API 存活检查：`http://localhost:3000/health/live`
-- API 就绪检查：`http://localhost:3000/health/ready`
-- OpenAPI 文档：`http://localhost:3000/docs`
-
-每次在新的终端运行全栈命令前，都需要先执行 `nvm use "$(cat .node-version)"`，并通过 `set -a; source .env; set +a` 导入环境变量。若 `createdb` 提示数据库已经存在，可直接继续；不再需要本地数据库时可执行 `brew services stop postgresql@17`。
+`pnpm dev` 不会启动 Workspace CLI。每次在新的终端运行全栈命令前，仍需执行 `nvm use "$(cat .node-version)"`；`.env` 由标准脚本自动读取，不再需要 `source .env`。若 `createdb` 提示数据库已经存在，可直接继续；不再需要本地数据库时可执行 `brew services stop postgresql@17`。
 
 ### 测试与构建
 
@@ -137,7 +155,7 @@ pnpm test
 pnpm check
 ```
 
-`pnpm run ci` 还会校验锁定工具链并重复执行数据库迁移，用于在 PostgreSQL 17 和 CI 数据库环境变量均已就绪时复现 CI 门禁。必须保留 `run`，否则 pnpm 会把 `pnpm ci` 解释为自身的 clean-install 命令。
+`pnpm test`、`pnpm check` 和 `pnpm run ci` 会自动选择独立测试库；测试库可能被重建，绝不能与人工开发数据所在的应用库相同。`pnpm run ci` 还会校验锁定工具链并重复执行数据库迁移。必须保留 `run`，否则 pnpm 会把 `pnpm ci` 解释为自身的 clean-install 命令。
 
 ### Linux/Docker 部署
 

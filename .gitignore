@@ -37,6 +37,8 @@ coverage/
 .env
 .env.*
 !.env.example
+.data/
+.tmp/
 *.log
 *.pid
 

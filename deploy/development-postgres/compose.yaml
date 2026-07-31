@@ -1,0 +1,35 @@
+name: ngapd-development-database
+
+services:
+  postgres:
+    image: postgres:17.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ngapd
+      POSTGRES_USER: ngapd
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    command:
+      - postgres
+      - -c
+      - password_encryption=scram-sha-256
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ngapd -d ngapd"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    ports:
+      - "${NGAPD_DEV_DB_BIND_ADDRESS:-192.168.100.1}:${NGAPD_DEV_DB_PORT:-55432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    secrets:
+      - postgres_password
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+
+volumes:
+  postgres-data:
