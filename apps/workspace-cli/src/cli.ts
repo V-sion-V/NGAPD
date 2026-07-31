@@ -60,15 +60,20 @@ const defaultRuntime: CliRuntime = {
 };
 
 export function parseCommand(args: readonly string[]): CliCommand {
-  rejectSecretArguments(args);
-  if (args.length === 0 || isExact(args, "--help") || isExact(args, "-h")) {
+  const normalizedArgs = args[0] === "--" ? args.slice(1) : args;
+  rejectSecretArguments(normalizedArgs);
+  if (
+    normalizedArgs.length === 0 ||
+    isExact(normalizedArgs, "--help") ||
+    isExact(normalizedArgs, "-h")
+  ) {
     return { kind: "help" };
   }
-  if (isExact(args, "--version") || isExact(args, "-V")) {
+  if (isExact(normalizedArgs, "--version") || isExact(normalizedArgs, "-V")) {
     return { kind: "version" };
   }
 
-  const [command, ...rawOptions] = args;
+  const [command, ...rawOptions] = normalizedArgs;
   if (command === "status" || command === "doctor") {
     const { values, json } = takeJson(rawOptions);
     if (values.length !== 0) {

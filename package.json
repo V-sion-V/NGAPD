@@ -28,7 +28,7 @@
     "dev:api": "node scripts/dev/with-database.mjs --scope=app -- pnpm dev:api:resolved",
     "dev:api:resolved": "pnpm build:packages && pnpm --filter @ngapd/api dev",
     "dev:workspace": "node scripts/dev/with-database.mjs --scope=none -- pnpm dev:workspace:resolved",
-    "dev:workspace:resolved": "pnpm build:packages && pnpm --filter @ngapd/workspace-cli dev --",
+    "dev:workspace:resolved": "pnpm build:packages && pnpm --filter @ngapd/workspace-cli dev",
     "dev:web": "pnpm build:packages && pnpm --filter @ngapd/web dev",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

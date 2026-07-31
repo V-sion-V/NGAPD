@@ -21,6 +21,10 @@ describe("parseCommand", () => {
       kind: "doctor",
       json: false,
     });
+    expect(parseCommand(["--", "doctor"])).toEqual({
+      kind: "doctor",
+      json: false,
+    });
     expect(parseCommand(["serve", "--stdio"])).toEqual({
       kind: "serve-stdio",
     });
