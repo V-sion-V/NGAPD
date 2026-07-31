@@ -20,7 +20,9 @@ NGAPD 主要服务于少于 20 人、实际活跃成员通常少于 10 人的独
 
 仓库结构、当前里程碑、设计文档索引和开发命令速查见 [AGENTS.md](AGENTS.md)。
 
-当前已完成 M3“平铺树状任务界面”：正式 React 页面在现有项目上下文中提供单层 DAG、深链/浏览器历史、项目级搜索与筛选、活动/归档分离、完整 M2 人类操作、评论/附件/活动/通知和显式 Admin Mode。实现与验证记录见 [M3 初始实现记录](docs/requirements/m3-task-ui/change-0.md)。
+当前已完成 M3“平铺树状任务界面”：正式 React 页面在现有项目上下文中提供单层 DAG、深链/浏览器历史、项目级搜索与筛选、活动/归档分离、完整 M2 人类操作、评论/附件/活动/通知和显式 Admin Mode。实现、验证与收尾结论见 [M3 初始实现记录](docs/requirements/m3-task-ui/change-0.md)和[M3 工作流回顾](docs/requirements/m3-task-ui/workflow-report.md)。
+
+当前开发入口已切换到分支 `codex/m4-workspace-sync-platform-adapter` 上的 M4“Workspace 同步平台适配器”。该分支从已合并的 `main@f032c67` 建立；M4 目前只处于需求澄清入口，尚未创建 schema-v3 功能工作流或开始产品实现。下一步必须先使用 `$clarify-feature-requirements` 明确范围、交付策略和验收，再独立规划。
 
 ## 已确认的产品边界
 

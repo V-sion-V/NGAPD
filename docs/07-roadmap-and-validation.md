@@ -1,10 +1,10 @@
 # 实施路线与验收策略
 
-文档状态：设计基线 0.8（M3 completed/passed）
+文档状态：设计基线 0.8（M3 completed/passed；M4 需求澄清入口）
 
 相关文档：[产品需求](01-product-requirements.md) · [系统架构](04-system-architecture.md) · [决策记录](08-decisions-and-open-issues.md)
 
-实现同步（2026-07-31）：三个前置原型、Workspace CLI 初始工作流、M0、M1、M2 和 M3 均已 completed/passed。M3 已交付生产平铺树状 Task UI、搜索/祖先链与 Session 附件读取，并以 `0010-m3-task-ui-history-compatibility` 保留完成历史下的既有删除语义；最终根门禁 311 tests passed、参考服务器六服务硬化/浏览器/P95 验证通过，无开放 finding。
+实现同步（2026-07-31）：三个前置原型、Workspace CLI 初始工作流、M0、M1、M2 和 M3 均已 completed/passed。M3 已交付生产平铺树状 Task UI、搜索/祖先链与 Session 附件读取，并以 `0010-m3-task-ui-history-compatibility` 保留完成历史下的既有删除语义；最终根门禁 311 tests passed、参考服务器六服务硬化/浏览器/P95 验证通过，无开放 finding，最佳实践工作流回顾已完成。M3 已快进合并并推送到 `main@f032c67`；当前 `codex/m4-workspace-sync-platform-adapter` 仅建立 M4 需求澄清入口，尚未创建 M4 schema-v3 工作流或产品实现。
 
 ## 1. 实施原则
 
@@ -158,6 +158,8 @@
 验收门槛：依赖方向和层级边界始终正确；用户能从项目顶层定位到任意深层 Task Key，并能稳定返回上一级。
 
 ### M4：Workspace 同步平台适配器
+
+入口状态（2026-07-31）：分支 `codex/m4-workspace-sync-platform-adapter` 已从 `main@f032c67` 建立并推送。当前状态只是里程碑入口，不等于 schema-v3 的 `planning`、`ready` 或 `in_progress`；`docs/requirements/` 下尚无 M4 功能目录。下一步必须先使用 `$clarify-feature-requirements` 读取正式 Workspace/权限/同步设计和原型证据，收集本次 strict/relaxed 策略与必要产品决策，再建立独立需求和工作流合同；在此之前不得开始 M4 产品代码。
 
 交付：
 
